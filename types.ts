@@ -1,29 +1,30 @@
-
 export enum ComplaintStatus {
-  PENDIENTE = 'pendiente',
-  PROCESO = 'proceso',
-  RESUELTO = 'resuelto'
+  PENDIENTE = 'Pendiente',
+  PROCESO = 'En Proceso',
+  RESUELTO = 'Resuelto'
 }
 
 export enum Priority {
-  BAJA = 'baja',
-  MEDIA = 'media',
-  ALTA = 'alta',
-  CRITICA = 'crítica'
+  BAJA = 'Baja',
+  MEDIA = 'Media',
+  ALTA = 'Alta',
+  CRITICA = 'Crítica'
 }
 
 export interface Complaint {
   id: string;
   date: string;
   patientName: string;
+  patientPhone: string;
   doctorName: string;
   specialty: string;
+  area: string;
   description: string;
   status: ComplaintStatus;
   priority: Priority;
+  sentiment?: string;
+  suggestedResponse?: string;
   managementResponse?: string;
-  area: string;
-  followUpDate: string;
 }
 
 export interface CallRecord {
@@ -32,30 +33,31 @@ export interface CallRecord {
   totalPatients: number;
   calledCount: number;
   notCalledCount: number;
+  agent: string;
 }
 
 export interface PhoneConfig {
-  ipAddress: string;
+  socketUrl: string;
+  sipDomain: string;
   sipUser: string;
   sipPass: string;
-  status: 'offline' | 'online' | 'calling' | 'ringing';
+  status: 'offline' | 'online' | 'connecting';
 }
 
 export interface IPCall {
   id: string;
   number: string;
-  direction: 'incoming' | 'outgoing';
-  duration: number; // segundos
+  status: 'ringing' | 'active' | 'missed' | 'ended';
   timestamp: string;
-  status: 'completed' | 'missed' | 'active';
-  startTime?: number; // Para cálculo de duración real
+  duration: number;
+  direction: 'incoming' | 'outgoing';
 }
 
 export interface User {
   id: string;
   username: string;
   name: string;
-  role: 'admin' | 'staff';
+  role: 'admin' | 'agent';
 }
 
-export type View = 'new-complaint' | 'dashboard' | 'complaints' | 'calls' | 'reports' | 'settings';
+export type View = 'dashboard' | 'complaints' | 'crm' | 'reports' | 'settings';

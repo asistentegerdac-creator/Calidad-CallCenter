@@ -1,33 +1,28 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Initialize Gemini API following specific library guidelines
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeComplaint = async (description: string) => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analiza la siguiente queja de un paciente y sugiere una respuesta profesional y acciones de mejora: "${description}"`,
+      contents: `Analiza esta queja médica: "${description}". Determina sentimiento y sugiere una respuesta profesional.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            sentiment: { type: Type.STRING, description: "Sentimiento: Positivo, Neutro, Negativo" },
-            suggestedResponse: { type: Type.STRING, description: "Respuesta sugerida para el paciente" },
-            actionPlan: { type: Type.STRING, description: "Plan de acción interno" }
+            sentiment: { type: Type.STRING },
+            suggestedResponse: { type: Type.STRING },
+            priority: { type: Type.STRING, description: "Baja, Media, Alta o Crítica" }
           },
-          required: ["sentiment", "suggestedResponse", "actionPlan"]
+          required: ["sentiment", "suggestedResponse", "priority"]
         }
       }
     });
-    
-    // Access the .text property directly as a string (not a function)
-    const text = response.text;
-    return text ? JSON.parse(text) : null;
+    return JSON.parse(response.text || "{}");
   } catch (error) {
-    console.error("Gemini Analysis Error:", error);
+    console.error("Gemini Error:", error);
     return null;
   }
 };

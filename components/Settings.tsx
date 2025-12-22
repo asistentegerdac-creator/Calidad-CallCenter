@@ -1,136 +1,124 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { PhoneConfig, IPCall } from '../types';
 
-interface SettingsProps {
+interface Props {
+  areas: string[];
+  setAreas: (a: string[]) => void;
+  specialties: string[];
+  setSpecialties: (s: string[]) => void;
   phoneConfig: PhoneConfig;
-  onUpdatePhoneConfig: (config: PhoneConfig) => void;
-  ipCallHistory: IPCall[];
+  setPhoneConfig: (p: PhoneConfig) => void;
+  onConnect: () => void;
+  callHistory: IPCall[];
 }
 
-export const Settings: React.FC<SettingsProps> = ({ phoneConfig, onUpdatePhoneConfig, ipCallHistory }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    onUpdatePhoneConfig({ ...phoneConfig, [name]: value });
-  };
+export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpecialties, phoneConfig, setPhoneConfig, onConnect, callHistory }) => {
+  const [newArea, setNewArea] = useState('');
+  const [newSpec, setNewSpec] = useState('');
 
-  const connectPhone = () => {
-    if (phoneConfig.ipAddress) {
-      onUpdatePhoneConfig({ ...phoneConfig, status: 'online' });
+  const getStatusButtonConfig = () => {
+    switch (phoneConfig.status) {
+      case 'online':
+        return { text: 'Línea Activa ✓', class: 'bg-emerald-600 text-white', disabled: false };
+      case 'connecting':
+        return { text: 'Conectando...', class: 'bg-blue-400 text-white cursor-wait animate-pulse', disabled: true };
+      default:
+        return { text: 'Conectar Central', class: 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20', disabled: false };
     }
   };
 
-  const disconnectPhone = () => {
-    onUpdatePhoneConfig({ ...phoneConfig, status: 'offline' });
-  };
+  const btnConfig = getStatusButtonConfig();
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 pb-20">
-      <div className="bg-white p-12 rounded-[50px] shadow-2xl border border-slate-100">
-        <div className="flex items-center gap-4 mb-10">
-          <div className="w-16 h-16 bg-slate-900 rounded-[20px] flex items-center justify-center text-3xl">🎛️</div>
-          <div>
-            <h3 className="text-3xl font-black text-slate-900 tracking-tighter">Grandstream CTI Bridge</h3>
-            <p className="text-blue-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-1">Sincronización de Terminal SIP</p>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="bg-white p-8 rounded-[2rem] border border-slate-200">
+        <h3 className="text-lg font-black mb-6 flex items-center gap-3">
+          <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center">📞</span>
+          Configuración Telefonía SIP
+        </h3>
+        <div className="space-y-4">
+          <div className="space-y-1">
+             <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">WebSocket URL</label>
+             <input className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none focus:border-blue-500" placeholder="ws://ip:puerto/ws" value={phoneConfig.socketUrl} onChange={e => setPhoneConfig({...phoneConfig, socketUrl: e.target.value})} />
           </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">IP del Dispositivo</label>
-            <input 
-              name="ipAddress" type="text" placeholder="192.168.X.X"
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 focus:border-blue-500 outline-none font-bold text-slate-800"
-              value={phoneConfig.ipAddress}
-              onChange={handleChange}
-            />
+          <div className="space-y-1">
+             <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">Dominio / IP PBX</label>
+             <input className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none focus:border-blue-500" placeholder="192.168.1.1" value={phoneConfig.sipDomain} onChange={e => setPhoneConfig({...phoneConfig, sipDomain: e.target.value})} />
           </div>
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Extensión / Usuario</label>
-              <input 
-                name="sipUser" type="text" placeholder="SIP-200"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 focus:border-blue-500 outline-none font-bold text-slate-800"
-                value={phoneConfig.sipUser}
-                onChange={handleChange}
-              />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+               <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">Usuario/Ext</label>
+               <input className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none focus:border-blue-500" value={phoneConfig.sipUser} onChange={e => setPhoneConfig({...phoneConfig, sipUser: e.target.value})} />
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SIP Secret</label>
-              <input 
-                name="sipPass" type="password" placeholder="••••••••"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 focus:border-blue-500 outline-none font-bold text-slate-800"
-                value={phoneConfig.sipPass}
-                onChange={handleChange}
-              />
+            <div className="space-y-1">
+               <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">Password</label>
+               <input className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none focus:border-blue-500" type="password" value={phoneConfig.sipPass} onChange={e => setPhoneConfig({...phoneConfig, sipPass: e.target.value})} />
             </div>
           </div>
-
-          <div className="pt-8 flex gap-4">
-            {phoneConfig.status === 'offline' ? (
-              <button 
-                onClick={connectPhone}
-                className="flex-1 bg-blue-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-600/20 hover:bg-blue-500 transition-all uppercase tracking-widest text-xs"
-              >
-                Iniciar Sesión SIP
-              </button>
-            ) : (
-              <button 
-                onClick={disconnectPhone}
-                className="flex-1 bg-rose-500 text-white font-black py-5 rounded-2xl shadow-xl shadow-rose-500/20 hover:bg-rose-400 transition-all uppercase tracking-widest text-xs"
-              >
-                Cerrar Conexión
-              </button>
-            )}
+          
+          <div className="pt-2">
+            <button 
+              onClick={onConnect}
+              disabled={btnConfig.disabled}
+              className={`w-full py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${btnConfig.class}`}
+            >
+              {btnConfig.text}
+            </button>
           </div>
+
+          <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-wider">
+            {phoneConfig.status === 'online' ? 'Conexión estable con servidor Asterisk/FreePBX' : 'Asegúrese de que el servidor SIP permita WebSockets'}
+          </p>
         </div>
-        
-        <div className="mt-10 p-6 bg-slate-50 rounded-3xl border border-slate-100 flex items-start gap-4">
-           <span className="text-2xl">💡</span>
-           <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-             <span className="text-blue-600 font-black">CTI ACTIVO:</span> Su Grandstream ahora funciona como un terminal integrado. Las llamadas entrantes dispararán el widget flotante, permitiendo atender y registrar automáticamente la duración para sus reportes gerenciales de contactabilidad.
-           </p>
+
+        <div className="mt-8 border-t border-slate-100 pt-6">
+           <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">Historial Reciente IP</h4>
+           <div className="space-y-2">
+              {callHistory.slice(0, 5).map(h => (
+                <div key={h.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg text-xs">
+                  <span className="font-bold">{h.number}</span>
+                  <span className="text-slate-400 uppercase font-black text-[9px]">{h.direction}</span>
+                  <span className="text-slate-400">{h.timestamp}</span>
+                </div>
+              ))}
+              {callHistory.length === 0 && <p className="text-[10px] text-slate-400 italic">Sin llamadas registradas.</p>}
+           </div>
         </div>
       </div>
 
-      <div className="bg-slate-900 p-12 rounded-[50px] shadow-2xl border border-slate-800 text-white flex flex-col">
-        <div className="flex items-center justify-between mb-10">
-          <h3 className="text-2xl font-black tracking-tighter">CDR - Registro de Llamadas</h3>
-          <span className="px-4 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[9px] font-black uppercase tracking-[0.2em]">Real-Time Traffic</span>
+      <div className="bg-white p-8 rounded-[2rem] border border-slate-200 space-y-8">
+        <div>
+          <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+            <span className="text-blue-600">🏢</span> Áreas Clínicas
+          </h3>
+          <div className="flex gap-2 mb-4">
+            <input className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500" value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="Ej: Rayos X" />
+            <button onClick={() => { if(newArea) setAreas([...areas, newArea]); setNewArea(''); }} className="px-4 bg-emerald-600 text-white rounded-lg font-black transition-colors hover:bg-emerald-700 shadow-md shadow-emerald-500/10">+</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {areas.map(a => (
+              <span key={a} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-md text-[11px] font-bold flex items-center gap-2 border border-blue-100">
+                {a} <button onClick={() => setAreas(areas.filter(x => x !== a))} className="text-blue-300 hover:text-rose-500 transition-colors">×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
-          {ipCallHistory.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-20">
-               <span className="text-6xl mb-4">📭</span>
-               <p className="text-xs font-black uppercase tracking-widest">No hay tráfico registrado aún</p>
-            </div>
-          ) : (
-            ipCallHistory.map(call => (
-              <div key={call.id} className="bg-white/5 border border-white/10 p-5 rounded-3xl flex items-center justify-between group hover:bg-white/10 transition-all">
-                <div className="flex items-center gap-4">
-                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${call.status === 'missed' ? 'bg-rose-500/10 text-rose-500' : call.direction === 'incoming' ? 'bg-blue-500/10 text-blue-400' : 'bg-green-500/10 text-green-400'}`}>
-                     {call.status === 'missed' ? '📞' : call.direction === 'incoming' ? '↙️' : '↗️'}
-                   </div>
-                   <div>
-                      <p className="font-black text-base">{call.number}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                         <span className="text-[9px] text-white/30 uppercase font-black">{call.timestamp}</span>
-                         <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase border ${call.status === 'missed' ? 'border-rose-500/30 text-rose-500' : 'border-blue-500/30 text-blue-400'}`}>
-                           {call.status}
-                         </span>
-                      </div>
-                   </div>
-                </div>
-                <div className="text-right">
-                   <p className={`font-black text-base ${call.status === 'missed' ? 'text-white/20' : 'text-blue-400'}`}>
-                     {Math.floor(call.duration / 60)}:{String(call.duration % 60).padStart(2, '0')}
-                   </p>
-                   <p className="text-[9px] text-white/20 uppercase font-black tracking-widest">Duration</p>
-                </div>
-              </div>
-            ))
-          )}
+        <div>
+          <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+            <span className="text-blue-600">🎓</span> Especialidades
+          </h3>
+          <div className="flex gap-2 mb-4">
+            <input className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500" value={newSpec} onChange={e => setNewSpec(e.target.value)} placeholder="Ej: Urología" />
+            <button onClick={() => { if(newSpec) setSpecialties([...specialties, newSpec]); setNewSpec(''); }} className="px-4 bg-emerald-600 text-white rounded-lg font-black transition-colors hover:bg-emerald-700 shadow-md shadow-emerald-500/10">+</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {specialties.map(s => (
+              <span key={s} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-md text-[11px] font-bold flex items-center gap-2 border border-slate-200">
+                {s} <button onClick={() => setSpecialties(specialties.filter(x => x !== s))} className="text-slate-400 hover:text-rose-500 transition-colors">×</button>
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </div>

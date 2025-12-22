@@ -1,5 +1,7 @@
 {
-  "name": "Calidad DAC",
-  "description": "Sistema integral de gestión de calidad y contactabilidad médica. DAC Intelligence Center.",
-  "requestFramePermissions": []
+  "name": "DAC Hospital Intelligence PRO",
+  "description": "Enterprise-grade Medical Quality & SIP Call Center.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
