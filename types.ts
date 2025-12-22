@@ -38,16 +38,17 @@ export interface PhoneConfig {
   ipAddress: string;
   sipUser: string;
   sipPass: string;
-  status: 'offline' | 'online' | 'calling';
+  status: 'offline' | 'online' | 'calling' | 'ringing';
 }
 
 export interface IPCall {
   id: string;
   number: string;
   direction: 'incoming' | 'outgoing';
-  duration: number; // in seconds
+  duration: number; // segundos
   timestamp: string;
-  status: 'completed' | 'missed';
+  status: 'completed' | 'missed' | 'active';
+  startTime?: number; // Para cálculo de duración real
 }
 
 export interface User {
