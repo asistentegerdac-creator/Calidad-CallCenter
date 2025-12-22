@@ -29,9 +29,25 @@ export interface Complaint {
 export interface CallRecord {
   id: string;
   date: string;
-  totalPatients: number; // Total pacientes del día
-  calledCount: number;   // Cuántos fueron llamados
-  notCalledCount: number; // Cuántos quedaron sin llamar
+  totalPatients: number;
+  calledCount: number;
+  notCalledCount: number;
+}
+
+export interface PhoneConfig {
+  ipAddress: string;
+  sipUser: string;
+  sipPass: string;
+  status: 'offline' | 'online' | 'calling';
+}
+
+export interface IPCall {
+  id: string;
+  number: string;
+  direction: 'incoming' | 'outgoing';
+  duration: number; // in seconds
+  timestamp: string;
+  status: 'completed' | 'missed';
 }
 
 export interface User {
@@ -41,4 +57,4 @@ export interface User {
   role: 'admin' | 'staff';
 }
 
-export type View = 'new-complaint' | 'dashboard' | 'complaints' | 'calls' | 'reports';
+export type View = 'new-complaint' | 'dashboard' | 'complaints' | 'calls' | 'reports' | 'settings';
