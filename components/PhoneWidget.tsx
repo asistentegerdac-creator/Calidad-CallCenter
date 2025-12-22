@@ -21,46 +21,64 @@ export const PhoneWidget: React.FC<Props> = ({ config, activeCall, onDial }) => 
   if (config.status === 'offline') return null;
 
   return (
-    <div className={`fixed bottom-8 right-8 z-[100] transition-all duration-300 ${activeCall ? 'scale-105' : 'scale-100'}`}>
-      <div className="bg-white rounded-[2rem] p-6 shadow-2xl min-w-[300px] border border-slate-200">
+    <div className={`fixed bottom-10 right-10 z-[100] transition-all duration-500 ${activeCall ? 'scale-110' : 'scale-100'}`}>
+      <div className="bg-white rounded-[3rem] p-8 shadow-2xl min-w-[350px] border border-slate-200 neo-3d">
         {!activeCall ? (
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-xl">📞</div>
+            <div className="flex items-center gap-4">
+              <div className={`w-14 h-14 ${config.status === 'online' ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-400'} rounded-2xl flex items-center justify-center text-2xl shadow-inner`}>
+                📞
+              </div>
               <div>
-                <p className="text-[10px] font-black uppercase text-slate-400">Estado Línea</p>
-                <p className="text-xs font-black text-emerald-600 uppercase">SIP Online</p>
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Enlace Telefónico</p>
+                <p className={`text-xs font-black uppercase tracking-tight ${config.status === 'online' ? 'text-emerald-500' : 'text-slate-400'}`}>
+                   Central en Línea
+                </p>
               </div>
             </div>
-            <button onClick={() => setShow(!show)} className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg hover:bg-blue-700">⌨️</button>
+            <button 
+              onClick={() => setShow(!show)} 
+              className="w-14 h-14 btn-vibrant text-white rounded-2xl flex items-center justify-center text-xl shadow-lg active:scale-90 transition-transform"
+            >
+              {show ? '✕' : '⌨️'}
+            </button>
           </div>
         ) : (
-          <div className="text-center space-y-4">
-            <div className={`w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-lg ${activeCall.status === 'ringing' ? 'bg-amber-100 text-amber-600 animate-bounce' : 'bg-blue-600 text-white animate-pulse'}`}>
+          <div className="text-center space-y-6">
+            <div className={`w-24 h-24 rounded-3xl mx-auto flex items-center justify-center text-5xl shadow-2xl ${activeCall.status === 'ringing' ? 'bg-amber-100 text-amber-500 animate-bounce' : 'bg-blue-600 text-white animate-pulse'}`}>
               📞
             </div>
             <div>
-              <p className="text-xl font-black text-slate-800">{activeCall.number}</p>
-              <p className="text-blue-600 text-[10px] font-black tracking-widest uppercase">
-                {activeCall.status === 'ringing' ? 'Llamada Entrante' : `En curso: ${Math.floor(timer/60)}:${String(timer%60).padStart(2, '0')}`}
-              </p>
+              <p className="text-3xl font-black text-slate-800 tracking-tighter">{activeCall.number}</p>
+              <div className="flex items-center justify-center gap-3 mt-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></div>
+                <p className="text-blue-600 text-[11px] font-black tracking-widest uppercase">
+                  {activeCall.status === 'ringing' ? 'Solicitud Entrante' : `Duración: ${Math.floor(timer/60)}:${String(timer%60).padStart(2, '0')}`}
+                </p>
+              </div>
             </div>
-            <button className="w-full py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg">Finalizar</button>
+            <button className="w-full py-5 bg-rose-500 text-white rounded-[2rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-rose-200 hover:bg-rose-600 transition-all active:scale-95">
+              FINALIZAR CONEXIÓN
+            </button>
           </div>
         )}
 
         {show && !activeCall && (
-          <div className="mt-5 pt-5 border-t border-slate-100 space-y-3">
-            <input 
-              id="dialer_input"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xl font-black text-center tracking-widest outline-none focus:border-blue-500" 
-              placeholder="0000"
-            />
+          <div className="mt-8 pt-8 border-t border-slate-100 animate-in slide-in-from-bottom-5 duration-300">
+            <div className="relative mb-6">
+              <input 
+                id="dialer_input"
+                autoFocus
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl p-6 text-4xl font-black text-center tracking-[0.4em] text-slate-800 outline-none focus:border-blue-500 transition-all shadow-inner" 
+                placeholder="---"
+              />
+              <p className="text-center text-[9px] font-black text-slate-300 uppercase mt-4 tracking-widest">Ingrese número de extensión o externo</p>
+            </div>
             <button 
               onClick={() => { const el = document.getElementById('dialer_input') as HTMLInputElement; onDial(el.value); setShow(false); }}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px]"
+              className="w-full py-5 btn-vibrant text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[11px] shadow-2xl active:scale-95 transition-all"
             >
-              Iniciar Llamada
+              INICIAR LLAMADA DIGITAL
             </button>
           </div>
         )}

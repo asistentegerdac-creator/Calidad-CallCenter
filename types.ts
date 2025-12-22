@@ -37,7 +37,6 @@ export interface CallRecord {
 }
 
 export interface PhoneConfig {
-  socketUrl: string;
   sipDomain: string;
   sipUser: string;
   sipPass: string;
