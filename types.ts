@@ -26,7 +26,8 @@ export interface Complaint {
   sentiment?: string;
   suggestedResponse?: string;
   managementResponse?: string;
-  resolvedBy?: string; // ID o nombre del admin que resolvió
+  resolvedBy?: string;
+  registered_at?: string;
 }
 
 export interface User {
