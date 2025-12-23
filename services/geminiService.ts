@@ -1,28 +1,33 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 export const analyzeComplaint = async (description: string) => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analiza esta queja médica: "${description}". Determina sentimiento y sugiere una respuesta profesional.`,
+      contents: [{ parts: [{ text: `Analiza la siguiente queja médica y responde estrictamente en formato JSON: "${description}"` }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            sentiment: { type: Type.STRING },
-            suggestedResponse: { type: Type.STRING },
-            priority: { type: Type.STRING, description: "Baja, Media, Alta o Crítica" }
+            sentiment: { type: Type.STRING, description: "Sentimiento del paciente (Muy Molesto, Neutro, Preocupado, etc.)" },
+            suggestedResponse: { type: Type.STRING, description: "Respuesta institucional empática y profesional sugerida" },
+            priority: { type: Type.STRING, description: "Prioridad sugerida: Baja, Media, Alta o Crítica" }
           },
           required: ["sentiment", "suggestedResponse", "priority"]
         }
       }
     });
+
     return JSON.parse(response.text || "{}");
   } catch (error) {
-    console.error("Gemini Error:", error);
-    return null;
+    console.error("Gemini Audit Error:", error);
+    return {
+      sentiment: "No analizado",
+      suggestedResponse: "Se requiere revisión manual por el equipo de calidad.",
+      priority: "Media"
+    };
   }
 };

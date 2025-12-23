@@ -1,4 +1,3 @@
-
 export enum ComplaintStatus {
   PENDIENTE = 'Pendiente',
   PROCESO = 'En Proceso',
@@ -23,9 +22,11 @@ export interface Complaint {
   description: string;
   status: ComplaintStatus;
   priority: Priority;
+  satisfaction: number; // 1-5
   sentiment?: string;
   suggestedResponse?: string;
   managementResponse?: string;
+  resolvedBy?: string; // ID o nombre del admin que resolvió
 }
 
 export interface User {
