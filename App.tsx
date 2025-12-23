@@ -30,30 +30,39 @@ const App: React.FC = () => {
     localStorage.setItem('dac_users', JSON.stringify(users));
   }, [users]);
 
+  // Sincronización Automática Robusta
   const autoSync = useCallback(async () => {
     const localComplaints = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
     const localUsers = JSON.parse(localStorage.getItem('dac_users') || '[]');
+    
     if (localComplaints.length === 0 && localUsers.length === 0) return;
 
-    setNotification({ msg: 'Sincronizando automáticamente...', type: 'success' });
-    let cCount = 0;
-    let uCount = 0;
+    setNotification({ msg: 'Sincronizando con Servidor...', type: 'success' });
+    
+    try {
+      // Sincronizar Usuarios
+      for (const u of localUsers) {
+        await dbService.saveUser(u);
+      }
+      // Sincronizar Incidencias
+      for (const c of localComplaints) {
+        await dbService.saveComplaint(c);
+      }
 
-    for (const u of localUsers) {
-      const ok = await dbService.saveUser(u);
-      if (ok) uCount++;
+      // IMPORTANTE: Limpiar local tras éxito para evitar duplicados en el próximo fetch
+      localStorage.setItem('dac_complaints', '[]');
+      
+      const remoteData = await dbService.fetchComplaints();
+      const remoteUsers = await dbService.fetchUsers();
+      
+      if (remoteData.length > 0) setComplaints(remoteData);
+      if (remoteUsers.length > 0) setUsers(remoteUsers);
+      
+      setNotification({ msg: 'Nodo Sincronizado Correctamente', type: 'success' });
+    } catch (e) {
+      setNotification({ msg: 'Error en Sincronización Automática', type: 'error' });
     }
-    for (const c of localComplaints) {
-      const ok = await dbService.saveComplaint(c);
-      if (ok) cCount++;
-    }
-    
-    // Una vez sincronizado, refrescar lista desde el servidor
-    const remoteData = await dbService.fetchComplaints();
-    if (remoteData.length > 0) setComplaints(remoteData);
-    
-    setNotification({ msg: `Sincronizados: ${uCount} USR / ${cCount} INC`, type: 'success' });
-    setTimeout(() => setNotification(null), 4000);
+    setTimeout(() => setNotification(null), 3000);
   }, []);
 
   useEffect(() => {
@@ -70,16 +79,19 @@ const App: React.FC = () => {
   }, [autoSync]);
 
   const handleAddComplaint = async (c: Complaint) => {
-    const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-    const updatedLocal = [c, ...local];
-    localStorage.setItem('dac_complaints', JSON.stringify(updatedLocal));
     setComplaints(prev => [c, ...prev]);
     
     if (isOnline) {
       const success = await dbService.saveComplaint(c);
-      setNotification({ msg: success ? 'Sincronizado con Postgres' : 'Fallo de red', type: success ? 'success' : 'error' });
+      if (!success) {
+        const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+        localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
+      }
+      setNotification({ msg: success ? 'Sincronizado' : 'Error Red - Guardado Local', type: success ? 'success' : 'error' });
     } else {
-      setNotification({ msg: 'Guardado Localmente', type: 'success' });
+      const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+      localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
+      setNotification({ msg: 'Guardado en Memoria Local', type: 'success' });
     }
     setTimeout(() => setNotification(null), 3000);
   };
@@ -87,8 +99,11 @@ const App: React.FC = () => {
   const handleUpdateComplaint = async (id: string, s: ComplaintStatus, r: string, auditor: string) => {
     const updated = complaints.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: auditor} : c);
     setComplaints(updated);
-    localStorage.setItem('dac_complaints', JSON.stringify(updated));
-    if (isOnline) await dbService.updateComplaint(id, s, r, auditor);
+    if (isOnline) {
+      await dbService.updateComplaint(id, s, r, auditor);
+    } else {
+      localStorage.setItem('dac_complaints', JSON.stringify(updated));
+    }
   };
 
   const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -108,14 +123,10 @@ const App: React.FC = () => {
         permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
       };
       
-      let finalUser = newUser;
-      if (isOnline) {
-        const result = await dbService.saveUser(newUser);
-        if (result && result.role) finalUser.role = result.role;
-      }
+      setUsers(prev => [...prev, newUser]);
+      if (isOnline) await dbService.saveUser(newUser);
       
-      setUsers(prev => [...prev, finalUser]);
-      setCurrentUser(finalUser);
+      setCurrentUser(newUser);
       setIsLoggedIn(true);
       return;
     }
@@ -123,7 +134,10 @@ const App: React.FC = () => {
     if (isOnline) {
       const userFromDb = await dbService.login(u, p);
       if (userFromDb) {
-        setCurrentUser(userFromDb);
+        setCurrentUser({
+          ...userFromDb,
+          permissions: userFromDb.permissions || ['dashboard']
+        });
         setIsLoggedIn(true);
         return;
       }
@@ -131,21 +145,20 @@ const App: React.FC = () => {
 
     const found = users.find(x => x.username === u && x.password === p);
     if (found || (u === 'admin' && p === 'admin')) {
-      setCurrentUser(found || { 
-        id: '1', name: 'Super Admin', username: 'admin', role: 'admin',
+      const userToLogin = found || { 
+        id: '1', name: 'Super Admin', username: 'admin', role: 'admin' as const,
         permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
-      });
+      };
+      setCurrentUser(userToLogin);
       setIsLoggedIn(true);
     } else {
-      alert('Error: Credenciales no válidas.');
+      alert('Credenciales no válidas en este nodo.');
     }
   };
 
-  // Filtrar vistas por permisos
   const hasPermission = (view: View) => {
     if (!currentUser) return false;
-    // Ajustes siempre visible según solicitud
-    if (view === 'settings') return true; 
+    if (view === 'settings') return true; // Ajustes siempre visible
     return currentUser.permissions.includes(view);
   };
 
@@ -156,13 +169,13 @@ const App: React.FC = () => {
           <div className="glass-card p-10 w-full max-w-md shadow-2xl border-orange-200">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-900 rounded-3xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-black">CD</div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v4.9</span></h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v5.0</span></h1>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Hospital Management Node</p>
             </div>
             <form onSubmit={handleAuth} className="space-y-4">
               <input name="user" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none" placeholder="Usuario Auditor" />
               <input name="pass" type="password" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none" placeholder="Contraseña" />
-              <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest">
+              <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">
                 {isRegisterMode ? 'Registrar en Nodo' : 'Ingresar al Sistema'}
               </button>
             </form>
@@ -227,14 +240,15 @@ const App: React.FC = () => {
                   areas={areas} 
                   setAreas={setAreas} 
                   specialties={specialties} 
-                  setSpecialties={setSpecialties} 
+                  setSpecialties={setSpecialties}
+                  users={users}
+                  setUsers={setUsers}
+                  currentUser={currentUser}
                   isOnline={isOnline} 
                   onConnStatusChange={async (s) => {
                     setIsOnline(s);
                     if (s) {
                       await autoSync();
-                      const data = await dbService.fetchComplaints();
-                      setComplaints(data);
                     }
                   }} 
                 />
