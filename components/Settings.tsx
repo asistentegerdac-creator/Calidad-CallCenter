@@ -1,22 +1,18 @@
 import React, { useState } from 'react';
 import { dbService } from '../services/apiService';
-import { Complaint } from '../types';
 
 interface Props {
   areas: string[];
   setAreas: (a: string[]) => void;
   specialties: string[];
   setSpecialties: (s: string[]) => void;
-  adminPassword: string;
   onConnStatusChange: (s: boolean) => void;
 }
 
-export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpecialties, adminPassword, onConnStatusChange }) => {
+export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpecialties, onConnStatusChange }) => {
   const [newArea, setNewArea] = useState('');
   const [newSpec, setNewSpec] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [dbPasswordAuth, setDbPasswordAuth] = useState('');
-  const [migrating, setMigrating] = useState(false);
   
   const [dbParams, setDbParams] = useState({
     host: '192.168.99.180',
@@ -26,100 +22,65 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
     password: ''
   });
 
-  const handleTestConnection = async () => {
-    const success = await dbService.testConnection(dbParams);
-    onConnStatusChange(success);
-    if (success) alert('✅ Nodo PostgreSQL vinculado con éxito.');
-    else alert('❌ Error de conexión al servidor.');
-  };
-
-  const handleMigration = async () => {
-    if (!confirm("¿Mover todos los datos locales a PostgreSQL?")) return;
-    setMigrating(true);
-    const localData = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-    if (localData.length === 0) {
-      alert("No hay datos para migrar.");
-      setMigrating(false);
-      return;
-    }
-    const result = await dbService.bulkSync(localData);
-    if (result.success) alert(`¡Éxito! Migrados ${result.count} registros.`);
-    setMigrating(false);
-  };
+  const removeArea = (idx: number) => setAreas(areas.filter((_, i) => i !== idx));
+  const removeSpec = (idx: number) => setSpecialties(specialties.filter((_, i) => i !== idx));
 
   return (
     <div className="space-y-12 pb-20">
-      <div className="glass-card bg-white p-12 border-2 border-dashed border-amber-300 shadow-inner">
-        <div className="flex justify-between items-center mb-10">
-          <div>
-            <h3 className="text-2xl font-black flex items-center gap-4 text-slate-900">
-              <span className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center">🐘</span> Enlace PostgreSQL
-            </h3>
-            <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mt-2 ml-16">Infraestructura de Datos Centralizada</p>
+      <div className="glass-card p-10 bg-slate-900 text-white shadow-2xl relative overflow-hidden">
+        <h3 className="text-xl font-black mb-2 flex items-center gap-3">
+          <span className="text-2xl">🐘</span> Configuración del Nodo Central
+        </h3>
+        {!isUnlocked ? (
+          <div className="mt-6">
+            <button onClick={() => setIsUnlocked(true)} className="px-8 py-4 bg-amber-500 rounded-2xl font-black text-[10px] uppercase tracking-widest">Configurar Servidor</button>
           </div>
-          {!isUnlocked && (
-            <div className="flex items-center gap-3">
-              <input type="password" placeholder="Clave Administrativa" className="p-4 bg-slate-50 rounded-2xl text-sm border-2 border-slate-100 outline-none focus:border-amber-500 font-bold" value={dbPasswordAuth} onChange={e => setDbPasswordAuth(e.target.value)} />
-              <button onClick={() => dbPasswordAuth === adminPassword ? setIsUnlocked(true) : alert('Clave Incorrecta')} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">Entrar</button>
-            </div>
-          )}
-        </div>
-
-        {isUnlocked && (
-          <div className="animate-in slide-in-from-top-6 duration-700 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-8 bg-slate-50 rounded-[3rem] border border-slate-100">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">IP del Servidor</label>
-                <input className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Puerto de Servicio</label>
-                <input className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.port} onChange={e => setDbParams({...dbParams, port: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Nombre de la Base</label>
-                <input className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Usuario Postgres</label>
-                <input className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Contraseña</label>
-                <input type="password" placeholder="••••••••" className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} />
-              </div>
-              <div className="flex items-end gap-4">
-                <button onClick={handleTestConnection} className="w-full py-5 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Vincular Nodo</button>
-              </div>
-            </div>
-
-            <button onClick={handleMigration} disabled={migrating} className="w-full py-6 bg-emerald-500 text-white rounded-[2.5rem] font-black uppercase text-[11px] tracking-widest shadow-xl disabled:opacity-50">
-              {migrating ? 'Sincronizando...' : 'Migrar Datos Locales a Postgres'}
-            </button>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 animate-in slide-in-from-top-4 duration-300">
+            <input className="bg-white/10 p-4 rounded-xl text-sm" placeholder="Host IP" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} />
+            <input className="bg-white/10 p-4 rounded-xl text-sm" placeholder="Port" value={dbParams.port} onChange={e => setDbParams({...dbParams, port: e.target.value})} />
+            <input className="bg-white/10 p-4 rounded-xl text-sm" placeholder="DB Name" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} />
+            <input className="bg-white/10 p-4 rounded-xl text-sm" placeholder="User" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} />
+            <input className="bg-white/10 p-4 rounded-xl text-sm" type="password" placeholder="Pass" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} />
+            <button onClick={async () => {
+              const ok = await dbService.testConnection(dbParams);
+              onConnStatusChange(ok);
+              alert(ok ? 'Conectado' : 'Error');
+            }} className="bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest">Guardar y Vincular</button>
           </div>
         )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        <div className="glass-card bg-white p-12 border border-orange-100 shadow-xl">
-          <h3 className="text-2xl font-black mb-10 flex items-center gap-4">🏢 Áreas</h3>
-          <div className="flex gap-4 mb-10">
-            <input className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 text-sm font-bold outline-none focus:border-amber-400" value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="Ej. Laboratorio" />
-            <button onClick={() => { if(newArea) { setAreas([...areas, newArea]); setNewArea(''); } }} className="w-16 h-16 bg-amber-500 text-white rounded-2xl font-black text-3xl shadow-xl">+</button>
+        <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
+          <h3 className="text-xl font-black mb-8 flex items-center gap-4 text-slate-900">🏢 Gestión de Áreas</h3>
+          <div className="flex gap-4 mb-8">
+            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="Ej. Odontología" />
+            <button onClick={() => { if(newArea) { setAreas([...areas, newArea]); setNewArea(''); } }} className="w-14 h-14 bg-amber-500 text-white rounded-2xl font-black text-2xl">+</button>
           </div>
-          <div className="flex flex-wrap gap-3">
-            {areas.map(a => <span key={a} className="px-5 py-3 bg-slate-50 text-slate-700 rounded-2xl text-[10px] font-black border border-slate-200 uppercase">{a}</span>)}
+          <div className="flex flex-wrap gap-2">
+            {areas.map((a, i) => (
+              <span key={i} className="group px-4 py-2 bg-slate-50 text-slate-700 rounded-xl text-[9px] font-black border border-slate-100 flex items-center gap-2">
+                {a}
+                <button onClick={() => removeArea(i)} className="text-rose-500 font-black">✕</button>
+              </span>
+            ))}
           </div>
         </div>
 
-        <div className="glass-card bg-white p-12 border border-orange-100 shadow-xl">
-          <h3 className="text-2xl font-black mb-10 flex items-center gap-4">🎓 Especialidades</h3>
-          <div className="flex gap-4 mb-10">
-            <input className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 text-sm font-bold outline-none focus:border-amber-400" value={newSpec} onChange={e => setNewSpec(e.target.value)} placeholder="Ej. Pediatría" />
-            <button onClick={() => { if(newSpec) { setSpecialties([...specialties, newSpec]); setNewSpec(''); } }} className="w-16 h-16 bg-orange-500 text-white rounded-2xl font-black text-3xl shadow-xl">+</button>
+        <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
+          <h3 className="text-xl font-black mb-8 flex items-center gap-4 text-slate-900">🎓 Gestión de Especialidades</h3>
+          <div className="flex gap-4 mb-8">
+            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newSpec} onChange={e => setNewSpec(e.target.value)} placeholder="Ej. Oftalmología" />
+            <button onClick={() => { if(newSpec) { setSpecialties([...specialties, newSpec]); setNewSpec(''); } }} className="w-14 h-14 bg-orange-500 text-white rounded-2xl font-black text-2xl">+</button>
           </div>
-          <div className="flex flex-wrap gap-3">
-            {specialties.map(s => <span key={s} className="px-5 py-3 bg-slate-50 text-slate-700 rounded-2xl text-[10px] font-black border border-slate-200 uppercase">{s}</span>)}
+          <div className="flex flex-wrap gap-2">
+            {specialties.map((s, i) => (
+              <span key={i} className="group px-4 py-2 bg-slate-50 text-slate-700 rounded-xl text-[9px] font-black border border-slate-100 flex items-center gap-2">
+                {s}
+                <button onClick={() => removeSpec(i)} className="text-rose-500 font-black">✕</button>
+              </span>
+            ))}
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { Complaint, ComplaintStatus } from '../types';
+import { Complaint, ComplaintStatus, DailyStat } from '../types';
 
 const API_BASE = 'http://192.168.99.180:3008/api';
 
@@ -14,9 +14,11 @@ export const dbService = {
     } catch { return false; }
   },
 
-  async fetchComplaints(): Promise<Complaint[]> {
+  async fetchComplaints(start?: string, end?: string): Promise<Complaint[]> {
     try {
-      const response = await fetch(`${API_BASE}/complaints`);
+      let url = `${API_BASE}/complaints`;
+      if (start && end) url += `?start=${start}&end=${end}`;
+      const response = await fetch(url);
       if (!response.ok) throw new Error();
       return await response.json();
     } catch { return []; }
@@ -33,17 +35,6 @@ export const dbService = {
     } catch { return false; }
   },
 
-  async bulkSync(complaints: Complaint[]): Promise<{success: boolean, count: number}> {
-    try {
-      const response = await fetch(`${API_BASE}/complaints/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ complaints })
-      });
-      return await response.json();
-    } catch { return { success: false, count: 0 }; }
-  },
-
   async updateComplaint(id: string, status: ComplaintStatus, managementResponse: string, resolvedBy: string): Promise<boolean> {
     try {
       const response = await fetch(`${API_BASE}/complaints/${id}`, {
@@ -55,13 +46,20 @@ export const dbService = {
     } catch { return false; }
   },
 
-  async syncStructure(type: 'area' | 'specialty', name: string): Promise<void> {
+  async fetchDailyStats(): Promise<DailyStat[]> {
     try {
-      await fetch(`${API_BASE}/sync-structure`, {
+      const response = await fetch(`${API_BASE}/daily-stats`);
+      return await response.json();
+    } catch { return []; }
+  },
+
+  async saveDailyStat(stat: DailyStat): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/daily-stats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, name })
+        body: JSON.stringify(stat)
       });
-    } catch (e) { console.error('Sync error:', e); }
+    } catch {}
   }
 };

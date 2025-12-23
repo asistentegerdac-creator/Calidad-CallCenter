@@ -16,18 +16,24 @@ export interface Complaint {
   date: string;
   patientName: string;
   patientPhone: string;
-  doctorName: string;
+  doctorName?: string;
   specialty: string;
   area: string;
   description: string;
   status: ComplaintStatus;
   priority: Priority;
-  satisfaction: number; // 1-5
+  satisfaction: number;
   sentiment?: string;
   suggestedResponse?: string;
   managementResponse?: string;
   resolvedBy?: string;
-  registered_at?: string;
+}
+
+export interface DailyStat {
+  id?: string;
+  date: string;
+  patients_attended: number;
+  patients_called: number;
 }
 
 export interface User {
@@ -38,4 +44,4 @@ export interface User {
   role: 'admin' | 'agent';
 }
 
-export type View = 'dashboard' | 'complaints' | 'reports' | 'settings';
+export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'settings';

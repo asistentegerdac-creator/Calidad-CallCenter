@@ -1,10 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Complaint, ComplaintStatus } from '../types';
 
-interface Props { 
-  complaints: Complaint[]; 
-  areas: string[];
-}
+interface Props { complaints: Complaint[]; areas: string[]; }
 
 export const Reports: React.FC<Props> = ({ complaints, areas }) => {
   const [filterDate, setFilterDate] = useState('');
@@ -21,62 +18,61 @@ export const Reports: React.FC<Props> = ({ complaints, areas }) => {
   }, [complaints, filterDate, filterArea, filterStatus]);
 
   return (
-    <div className="space-y-10">
-      <div className="glass-card p-10 bg-white border border-orange-100 no-print">
+    <div className="space-y-8">
+      <div className="glass-card p-6 md:p-10 bg-white border border-orange-100 no-print">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrar por Fecha</label>
-            <input type="month" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold text-slate-900" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase">Mes/Año</label>
+            <input type="month" className="w-full bg-slate-50 border-none rounded-xl p-4 text-xs font-bold" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Área / Depto</label>
-            <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold text-slate-900" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
-              <option value="Todas">Todas las áreas</option>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase">Área</label>
+            <select className="w-full bg-slate-50 border-none rounded-xl p-4 text-xs font-bold" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
+              <option value="Todas">Todas</option>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</label>
-            <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold text-slate-900" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-              <option value="Todos">Todos los estados</option>
-              <option value={ComplaintStatus.PENDIENTE}>Pendiente</option>
-              <option value={ComplaintStatus.PROCESO}>En Proceso</option>
-              <option value={ComplaintStatus.RESUELTO}>Resuelto</option>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase">Estado</label>
+            <select className="w-full bg-slate-50 border-none rounded-xl p-4 text-xs font-bold" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="Todos">Todos</option>
+              {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="flex items-end">
-            <button onClick={() => window.print()} className="w-full py-5 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl">
-              Exportar PDF Profesional
-            </button>
+            <button onClick={() => window.print()} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase shadow-lg">Exportar PDF</button>
           </div>
         </div>
       </div>
 
       <div className="glass-card bg-white border border-orange-100 overflow-hidden no-print">
-        <div className="p-8 border-b border-orange-50 flex justify-between items-center">
-          <h3 className="text-xl font-black text-slate-900">Vista Previa de Datos ({filtered.length})</h3>
-        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">ID / Fecha</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Paciente</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Área</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase">Estado</th>
+            <thead>
+              <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                <th className="px-8 py-4">Información del Caso</th>
+                <th className="px-8 py-4">Descripción de la Queja</th>
+                <th className="px-8 py-4">Área</th>
+                <th className="px-8 py-4">Satisfacción</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-100">
               {filtered.map(c => (
-                <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-8 py-6">
-                    <p className="font-black text-slate-900 text-xs">{c.id}</p>
-                    <p className="text-[10px] text-slate-400 font-bold">{c.date}</p>
+                <tr key={c.id} className="hover:bg-slate-50 transition-all">
+                  <td className="px-8 py-5">
+                    <p className="font-black text-slate-900 text-sm">{c.patientName}</p>
+                    <p className="text-[9px] text-slate-400 font-bold">{c.id} • {c.date}</p>
                   </td>
-                  <td className="px-8 py-6 font-bold text-slate-800 text-sm">{c.patientName}</td>
-                  <td className="px-8 py-6 font-black text-amber-600 text-[10px] uppercase">{c.area}</td>
-                  <td className="px-8 py-6">
-                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${c.status === ComplaintStatus.RESUELTO ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>{c.status}</span>
+                  <td className="px-8 py-5">
+                    <p className="text-xs text-slate-600 line-clamp-2 italic">"{c.description}"</p>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="px-3 py-1 bg-amber-50 text-amber-600 text-[9px] font-black rounded-lg uppercase">{c.area}</span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="flex gap-1">
+                      {[...Array(c.satisfaction)].map((_, i) => <span key={i} className="text-amber-400">★</span>)}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -85,47 +81,36 @@ export const Reports: React.FC<Props> = ({ complaints, areas }) => {
         </div>
       </div>
 
-      <div className="print:block hidden bg-white p-20">
-        <div className="border-b-4 border-slate-900 pb-10 mb-10 flex justify-between items-end">
+      {/* Formato de Impresión Profesional */}
+      <div className="print:block hidden bg-white p-12">
+        <div className="border-b-4 border-slate-900 pb-8 flex justify-between items-end">
           <div>
-            <h1 className="text-5xl font-black text-slate-900">CALIDAD DAC</h1>
-            <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mt-2">Hospital Management Report</p>
+            <h1 className="text-4xl font-black">REPORTE DAC</h1>
+            <p className="text-amber-500 font-black text-[10px] uppercase tracking-[0.5em]">Hospital Management v4.0</p>
           </div>
-          <p className="font-black text-slate-400 text-xs">FECHA: {new Date().toLocaleDateString()}</p>
+          <p className="text-xs font-black uppercase text-slate-400">{new Date().toLocaleDateString()}</p>
         </div>
-        <div className="grid grid-cols-2 gap-10 mb-16">
-          <div className="p-10 bg-slate-900 text-white rounded-[3rem]">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total de Registros</p>
-            <p className="text-6xl font-black">{filtered.length}</p>
-          </div>
-          <div className="p-10 border-4 border-slate-900 rounded-[3rem]">
-             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Filtros Aplicados</p>
-             <p className="text-xs font-black uppercase">{filterArea} / {filterStatus} / {filterDate || 'Todo el tiempo'}</p>
-          </div>
-        </div>
-        <table className="w-full text-left border-collapse">
-          <thead className="border-y border-slate-900">
-            <tr>
-              <th className="px-4 py-4 text-[10px] font-black uppercase">Paciente</th>
-              <th className="px-4 py-4 text-[10px] font-black uppercase">Área</th>
-              <th className="px-4 py-4 text-[10px] font-black uppercase">Fecha</th>
-              <th className="px-4 py-4 text-[10px] font-black uppercase">Estado</th>
+        <table className="w-full mt-10 text-left border-collapse">
+          <thead>
+            <tr className="border-b-2 border-slate-200">
+              <th className="py-4 text-xs font-black uppercase">Paciente y Detalle de Queja</th>
+              <th className="py-4 text-xs font-black uppercase">Área</th>
+              <th className="py-4 text-xs font-black uppercase">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.map(c => (
               <tr key={c.id}>
-                <td className="px-4 py-4 text-[11px] font-bold">{c.patientName}</td>
-                <td className="px-4 py-4 text-[11px] font-bold">{c.area}</td>
-                <td className="px-4 py-4 text-[11px] font-bold">{c.date}</td>
-                <td className="px-4 py-4 text-[11px] font-black uppercase">{c.status}</td>
+                <td className="py-6 pr-8">
+                  <p className="font-black text-sm">{c.patientName}</p>
+                  <p className="text-[10px] text-slate-500 italic mt-1 leading-relaxed">"{c.description}"</p>
+                </td>
+                <td className="py-6 text-xs font-bold uppercase">{c.area}</td>
+                <td className="py-6 text-xs font-black uppercase">{c.status}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="mt-40 pt-4 border-t border-slate-900 w-64 text-center mx-auto">
-          <p className="text-[10px] font-black uppercase">Firma del Auditor de Calidad</p>
-        </div>
       </div>
     </div>
   );
