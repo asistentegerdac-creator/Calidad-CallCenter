@@ -15,7 +15,6 @@ const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState(false);
   const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
 
-  // Estados de datos
   const [users, setUsers] = useState<User[]>(() => {
     try { return JSON.parse(localStorage.getItem('dac_users') || '[]'); } catch { return []; }
   });
@@ -23,36 +22,37 @@ const App: React.FC = () => {
   const [areas, setAreas] = useState<string[]>(["Urgencias", "UCI", "Consultas Externas", "Laboratorio", "Hospitalización"]);
   const [specialties, setSpecialties] = useState<string[]>(["Medicina General", "Pediatría", "Cardiología", "Ginecología", "Traumatología"]);
 
-  // Verificar conexión al inicio
+  // Al cargar, intentar conectar y traer datos
   useEffect(() => {
-    const checkConn = async () => {
-      const online = await dbService.testConnection({});
-      setIsOnline(online);
-      if (online) {
+    const initData = async () => {
+      const connected = await dbService.testConnection({});
+      setIsOnline(connected);
+      if (connected) {
         const data = await dbService.fetchComplaints();
         setComplaints(data);
       }
     };
-    checkConn();
+    initData();
   }, []);
 
-  // Persistir usuarios localmente (único dato local por seguridad de acceso inicial)
   useEffect(() => {
     localStorage.setItem('dac_users', JSON.stringify(users));
   }, [users]);
 
   const handleAddComplaint = async (c: Complaint) => {
-    if (isOnline) {
-      const success = await dbService.saveComplaint(c);
-      if (success) {
-        setComplaints(prev => [c, ...prev]);
-        setNotification({ msg: 'Sincronizado con PostgreSQL', type: 'success' });
-      } else {
-        setNotification({ msg: 'Error de red - Guardado temporal', type: 'error' });
-      }
-    } else {
-      setComplaints(prev => [c, ...prev]);
-      setNotification({ msg: 'Modo Offline - Datos locales', type: 'error' });
+    const success = isOnline ? await dbService.saveComplaint(c) : false;
+    setComplaints(prev => [c, ...prev]);
+    setNotification({ 
+      msg: success ? 'Sincronizado con PostgreSQL' : 'Registrado localmente (Offline)', 
+      type: success ? 'success' : 'error' 
+    });
+  };
+
+  const handleUpdateComplaint = async (id: string, s: ComplaintStatus, r: string, auditor: string) => {
+    const success = isOnline ? await dbService.updateComplaint(id, s, r, auditor) : false;
+    setComplaints(prev => prev.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: auditor} : c));
+    if (success) {
+      setNotification({ msg: 'Expediente cerrado en PostgreSQL', type: 'success' });
     }
   };
 
@@ -80,7 +80,7 @@ const App: React.FC = () => {
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-[#fffcf9] flex items-center justify-center p-6">
-        <div className="bg-white p-12 rounded-[4rem] w-full max-w-md shadow-2xl border border-orange-100 animate-in fade-in zoom-in duration-500">
+        <div className="bg-white p-12 rounded-[4rem] w-full max-w-md shadow-2xl border border-orange-100">
           <div className="text-center mb-10">
             <div className="w-20 h-20 bg-amber-500 rounded-[2rem] mx-auto mb-6 flex items-center justify-center text-white text-4xl font-black shadow-lg">CD</div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tighter">CALIDAD DAC</h1>
@@ -94,9 +94,7 @@ const App: React.FC = () => {
               {isRegisterMode ? 'CONFIGURAR ADMINISTRADOR' : 'ENTRAR AL PANEL'}
             </button>
           </form>
-          <div className="mt-6 flex justify-center gap-4">
-             <button onClick={() => setIsRegisterMode(!isRegisterMode)} className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{isRegisterMode ? 'Ir al Login' : 'Crear Cuenta'}</button>
-          </div>
+          <button onClick={() => setIsRegisterMode(!isRegisterMode)} className="w-full mt-6 text-[9px] font-black uppercase text-slate-400 tracking-widest">{isRegisterMode ? 'Volver al Ingreso' : 'Crear Cuenta Nueva'}</button>
         </div>
       </div>
     );
@@ -112,7 +110,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2 mt-1">
                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
                <span className={`text-[8px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
-                 {isOnline ? 'ONLINE: POSTGRES' : 'OFFLINE: LOCAL'}
+                 {isOnline ? 'ONLINE: POSTGRES' : 'OFFLINE: MODO LOCAL'}
                </span>
             </div>
           </div>
@@ -132,15 +130,8 @@ const App: React.FC = () => {
           ))}
         </nav>
 
-        <div className="pt-8 border-t border-orange-50 mt-auto">
-          <div className="flex items-center gap-3 mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-[11px] font-black">AD</div>
-            <div className="truncate">
-              <p className="text-[10px] font-black text-slate-900 truncate">{currentUser?.name}</p>
-              <p className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Administrador Jefe</p>
-            </div>
-          </div>
-          <button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); }} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-100 transition-colors shadow-sm">Cerrar Sesión</button>
+        <div className="pt-8 border-t border-orange-50 mt-auto text-center">
+          <button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); }} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-100 shadow-sm">Cerrar Sesión</button>
         </div>
       </aside>
 
@@ -177,9 +168,7 @@ const App: React.FC = () => {
                    <h3 className="text-3xl font-black tracking-tight text-slate-900">Histórico de Auditoría</h3>
                    <span className="bg-amber-100 text-amber-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{complaints.length} REGISTROS</span>
                 </div>
-                <ComplaintList complaints={complaints} currentUser={currentUser} onUpdate={(id, s, r, a) => {
-                   setComplaints(prev => prev.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: a} : c));
-                }} />
+                <ComplaintList complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} />
               </div>
             </div>
           )}
@@ -191,7 +180,13 @@ const App: React.FC = () => {
               specialties={specialties} 
               setSpecialties={setSpecialties} 
               adminPassword={currentUser?.password || ''} 
-              onConnStatusChange={setIsOnline}
+              onConnStatusChange={async (s) => {
+                setIsOnline(s);
+                if (s) {
+                  const data = await dbService.fetchComplaints();
+                  setComplaints(data);
+                }
+              }}
             />
           )}
         </div>

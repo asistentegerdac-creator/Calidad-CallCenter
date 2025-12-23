@@ -15,12 +15,12 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
   const [newSpec, setNewSpec] = useState('');
   
   // DB Config State
-  const [dbPassword, setDbPassword] = useState('');
+  const [dbPasswordAuth, setDbPasswordAuth] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [dbParams, setDbParams] = useState({
-    host: 'localhost',
-    port: '5432',
+    host: '192.168.99.180',
+    port: '3008',
     database: 'calidad_dac_db',
     user: 'postgres',
     password: ''
@@ -28,7 +28,7 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
   const [generatedSql, setGeneratedSql] = useState('');
 
   const handleUnlock = () => {
-    if (dbPassword === adminPassword) {
+    if (dbPasswordAuth === adminPassword) {
       setIsUnlocked(true);
     } else {
       alert('Contraseña Administrativa Incorrecta');
@@ -41,9 +41,9 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
     setTestStatus(success ? 'success' : 'error');
     onConnStatusChange(success);
     if (success) {
-      alert('¡Conexión exitosa con PostgreSQL!');
+      alert('¡Conexión exitosa con PostgreSQL! Los datos ahora se sincronizarán.');
     } else {
-      alert('No se pudo establecer conexión con el backend. Verifique el servidor.');
+      alert('Error: No se pudo conectar al servidor en ' + dbParams.host + ':' + dbParams.port + '. Verifique que el servidor Node.js esté corriendo.');
     }
   };
 
@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS medical_incidences (
           </div>
           {!isUnlocked && (
             <div className="flex items-center gap-3">
-              <input type="password" placeholder="Clave Administrador" className="p-4 bg-slate-50 rounded-2xl text-sm border-2 border-slate-100 outline-none focus:border-amber-500 font-bold text-slate-900" value={dbPassword} onChange={e => setDbPassword(e.target.value)} />
+              <input type="password" placeholder="Clave Administrador" className="p-4 bg-slate-50 rounded-2xl text-sm border-2 border-slate-100 outline-none focus:border-amber-500 font-bold text-slate-900" value={dbPasswordAuth} onChange={e => setDbPasswordAuth(e.target.value)} />
               <button onClick={handleUnlock} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg">Desbloquear</button>
             </div>
           )}
@@ -143,9 +143,9 @@ CREATE TABLE IF NOT EXISTS medical_incidences (
 
         {isUnlocked && (
           <div className="animate-in slide-in-from-top-6 duration-700 space-y-12">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-8 bg-slate-50 rounded-[3rem] border border-slate-100">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 p-8 bg-slate-50 rounded-[3rem] border border-slate-100">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Servidor</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Servidor (IP/Host)</label>
                 <input className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} />
               </div>
               <div className="space-y-2">
@@ -156,13 +156,21 @@ CREATE TABLE IF NOT EXISTS medical_incidences (
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Base de Datos</label>
                 <input className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} />
               </div>
-              <div className="flex items-end gap-4 md:col-span-3">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Usuario Postgres</label>
+                <input className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Contraseña Postgres</label>
+                <input type="password" placeholder="••••••••" className="w-full bg-white border-2 border-slate-200 rounded-2xl p-4 font-bold text-slate-900 text-sm outline-none focus:border-amber-400" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} />
+              </div>
+              <div className="flex items-end gap-4">
                 <button 
                   onClick={handleTestConnection} 
                   disabled={testStatus === 'testing'}
-                  className={`flex-1 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl transition-all ${testStatus === 'testing' ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white hover:bg-amber-600'}`}
+                  className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl transition-all ${testStatus === 'testing' ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white hover:bg-amber-600'}`}
                 >
-                  {testStatus === 'testing' ? 'PROBANDO...' : 'TEST CONNECTION & SYNC'}
+                  {testStatus === 'testing' ? 'PROBANDO...' : 'TEST & GUARDAR'}
                 </button>
               </div>
             </div>
