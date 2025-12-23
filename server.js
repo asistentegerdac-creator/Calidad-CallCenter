@@ -10,53 +10,65 @@ app.use(express.json({ limit: '50mb' }));
 let pool = null;
 
 const createTables = async (targetPool) => {
-  // Esquema de Usuarios
-  await targetPool.query(`
-    CREATE TABLE IF NOT EXISTS dac_users (
-      user_id VARCHAR(50) PRIMARY KEY,
-      username VARCHAR(100) UNIQUE NOT NULL,
-      password VARCHAR(255) NOT NULL,
-      full_name VARCHAR(255),
-      role VARCHAR(20) DEFAULT 'agent',
-      permissions TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+  try {
+    // Esquema de Usuarios
+    await targetPool.query(`
+      CREATE TABLE IF NOT EXISTS dac_users (
+        user_id VARCHAR(50) PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255),
+        role VARCHAR(20) DEFAULT 'agent',
+        permissions TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
-  // Esquema de Incidencias
-  await targetPool.query(`
-    CREATE TABLE IF NOT EXISTS medical_incidences (
-      audit_id VARCHAR(50) PRIMARY KEY,
-      incidence_date DATE NOT NULL,
-      patient_name VARCHAR(255) NOT NULL,
-      patient_phone VARCHAR(50),
-      doctor_name VARCHAR(255),
-      specialty_name VARCHAR(100),
-      area_name VARCHAR(100),
-      complaint_description TEXT NOT NULL,
-      current_status VARCHAR(50) DEFAULT 'Pendiente',
-      priority_level VARCHAR(50) DEFAULT 'Media',
-      satisfaction_score INTEGER,
-      ai_sentiment VARCHAR(50),
-      ai_suggested_response TEXT,
-      management_solution TEXT,
-      resolved_by_admin VARCHAR(150),
-      registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+    // Esquema de Incidencias
+    await targetPool.query(`
+      CREATE TABLE IF NOT EXISTS medical_incidences (
+        audit_id VARCHAR(50) PRIMARY KEY,
+        incidence_date DATE NOT NULL,
+        patient_name VARCHAR(255) NOT NULL,
+        patient_phone VARCHAR(50),
+        doctor_name VARCHAR(255),
+        specialty_name VARCHAR(100),
+        area_name VARCHAR(100),
+        complaint_description TEXT NOT NULL,
+        current_status VARCHAR(50) DEFAULT 'Pendiente',
+        priority_level VARCHAR(50) DEFAULT 'Media',
+        satisfaction_score INTEGER,
+        ai_sentiment VARCHAR(50),
+        ai_suggested_response TEXT,
+        management_solution TEXT,
+        resolved_by_admin VARCHAR(150),
+        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
-  // Esquema de Estadísticas
-  await targetPool.query(`
-    CREATE TABLE IF NOT EXISTS daily_stats (
-      stat_date DATE PRIMARY KEY,
-      patients_attended INTEGER DEFAULT 0,
-      patients_called INTEGER DEFAULT 0
-    );
-  `);
+    // Esquema de Estadísticas
+    await targetPool.query(`
+      CREATE TABLE IF NOT EXISTS daily_stats (
+        stat_date DATE PRIMARY KEY,
+        patients_attended INTEGER DEFAULT 0,
+        patients_called INTEGER DEFAULT 0
+      );
+    `);
+    console.log("✅ Tablas sincronizadas con PostgreSQL local.");
+  } catch (err) {
+    console.error("❌ Error de estructura SQL:", err);
+    throw err;
+  }
 };
 
 const ensurePool = (req, res, next) => {
-  if (!pool) return res.status(500).json({ error: 'PostgreSQL no conectado. Vincule el nodo primero.' });
+  if (!pool) {
+    console.warn("⚠️ Petición recibida pero el Nodo no está inicializado.");
+    return res.status(503).json({ 
+      error: 'NODE_NOT_INITIALIZED', 
+      message: 'El servidor se reinició. Por favor, re-vincule el nodo desde Ajustes.' 
+    });
+  }
   next();
 };
 
@@ -69,12 +81,19 @@ app.post('/api/test-db', async (req, res) => {
       database: config.database || 'calidad_dac_db',
       password: config.password || '',
       port: config.port || 5432,
+      connectionTimeoutMillis: 5000,
     });
+    
+    // Verificar conexión física
     await newPool.query('SELECT NOW()');
+    // Asegurar estructura
     await createTables(newPool);
+    
     pool = newPool;
+    console.log(`🚀 Nodo vinculado: ${config.database}@${config.host}`);
     res.status(200).json({ status: 'connected' });
   } catch (err) {
+    console.error("❌ Error conectando a PostgreSQL:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -82,7 +101,7 @@ app.post('/api/test-db', async (req, res) => {
 app.post('/api/repair-db', ensurePool, async (req, res) => {
   try {
     await createTables(pool);
-    res.status(200).json({ status: 'repaired' });
+    res.status(200).json({ status: 'repaired', message: 'Estructura de base de datos verificada.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -102,14 +121,6 @@ app.get('/api/users', ensurePool, async (req, res) => {
 app.post('/api/users', ensurePool, async (req, res) => {
   const u = req.body;
   try {
-    const countRes = await pool.query('SELECT COUNT(*) FROM dac_users');
-    const isFirstUser = parseInt(countRes.rows[0].count) === 0;
-    
-    const finalRole = (isFirstUser || u.role === 'admin') ? 'admin' : 'agent';
-    const permissionsStr = (isFirstUser || !u.permissions || u.permissions.length === 0) 
-      ? 'dashboard,incidences,new-incidence,reports,settings' 
-      : u.permissions.join(',');
-
     const result = await pool.query(`
       INSERT INTO dac_users (user_id, username, password, full_name, role, permissions)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -119,13 +130,13 @@ app.post('/api/users', ensurePool, async (req, res) => {
         password = EXCLUDED.password,
         full_name = EXCLUDED.full_name
       RETURNING user_id as id, username, full_name as name, role, permissions
-    `, [u.id, u.username, u.password, u.name || u.username, finalRole, permissionsStr]);
+    `, [u.id, u.username, u.password, u.name || u.username, u.role, u.permissions ? u.permissions.join(',') : 'dashboard']);
     
     const saved = result.rows[0];
     saved.permissions = saved.permissions ? saved.permissions.split(',') : [];
     res.status(201).json(saved);
   } catch (err) { 
-    console.error(err);
+    console.error("SQL Error saving user:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
@@ -141,16 +152,6 @@ app.post('/api/login', ensurePool, async (req, res) => {
     } else {
       res.status(401).json({ error: 'Credenciales inválidas' });
     }
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/users/:id', ensurePool, async (req, res) => {
-  const { id } = req.params;
-  const { role, permissions } = req.body;
-  const permissionsStr = permissions ? permissions.join(',') : 'dashboard';
-  try {
-    await pool.query('UPDATE dac_users SET role = $1, permissions = $2 WHERE user_id = $3', [role, permissionsStr, id]);
-    res.sendStatus(200);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -199,20 +200,31 @@ app.post('/api/complaints', ensurePool, async (req, res) => {
     ]);
     res.sendStatus(201);
   } catch (err) { 
+    console.error("SQL Error saving complaint:", err.message);
     res.status(500).json({ error: err.message }); 
   }
 });
 
-app.delete('/api/clear-data', ensurePool, async (req, res) => {
+// Fix: Added PUT endpoint for complaint updates
+app.put('/api/complaints/:id', ensurePool, async (req, res) => {
+  const { id } = req.params;
+  const { status, managementResponse, resolvedBy } = req.body;
   try {
-    await pool.query('TRUNCATE TABLE medical_incidences, daily_stats, dac_users CASCADE');
+    await pool.query(`
+      UPDATE medical_incidences SET 
+        current_status = $1, 
+        management_solution = $2, 
+        resolved_by_admin = $3 
+      WHERE audit_id = $4
+    `, [status, managementResponse, resolvedBy, id]);
     res.sendStatus(200);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/daily-stats', ensurePool, async (req, res) => {
+// Fix: Added endpoints for daily stats
+app.get('/api/stats', ensurePool, async (req, res) => {
   try {
-    const result = await pool.query('SELECT stat_date as date, patients_attended, patients_called FROM daily_stats ORDER BY stat_date DESC LIMIT 30');
+    const result = await pool.query('SELECT stat_date as date, patients_attended, patients_called FROM daily_stats ORDER BY stat_date DESC');
     res.json(result.rows.map(r => ({
       ...r,
       date: r.date ? new Date(r.date).toISOString().split('T')[0] : ''
@@ -220,18 +232,26 @@ app.get('/api/daily-stats', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/daily-stats', ensurePool, async (req, res) => {
-  const { date, patients_attended, patients_called } = req.body;
+app.post('/api/stats', ensurePool, async (req, res) => {
+  const s = req.body;
   try {
     await pool.query(`
       INSERT INTO daily_stats (stat_date, patients_attended, patients_called)
       VALUES ($1, $2, $3)
       ON CONFLICT (stat_date) DO UPDATE SET 
-      patients_attended = EXCLUDED.patients_attended, 
-      patients_called = EXCLUDED.patients_called
-    `, [date, patients_attended, patients_called]);
+        patients_attended = EXCLUDED.patients_attended, 
+        patients_called = EXCLUDED.patients_called
+    `, [s.date, s.patients_attended, s.patients_called]);
     res.sendStatus(201);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(3008, '0.0.0.0', () => console.log('🚀 DAC Node Central v5.3 Online'));
+// Fix: Added clear-data endpoint
+app.delete('/api/clear-data', ensurePool, async (req, res) => {
+  try {
+    await pool.query('TRUNCATE TABLE medical_incidences, daily_stats RESTART IDENTITY');
+    res.sendStatus(200);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend DAC Central v5.5 ACTIVO'));

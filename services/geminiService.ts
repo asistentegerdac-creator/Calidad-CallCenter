@@ -1,6 +1,8 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Fix: Exclusively use process.env.API_KEY directly as per guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeComplaint = async (description: string) => {
   try {
@@ -21,6 +23,7 @@ export const analyzeComplaint = async (description: string) => {
       }
     });
 
+    // Fix: Access response.text directly (it is a getter, not a method)
     return JSON.parse(response.text || "{}");
   } catch (error) {
     console.error("Gemini Audit Error:", error);
