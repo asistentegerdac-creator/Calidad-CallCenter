@@ -26,7 +26,7 @@ app.post('/api/test-db', async (req, res) => {
     });
     await newPool.query('SELECT NOW()');
     
-    // Esquema de Usuarios
+    // Esquema de Usuarios con Permisos
     await newPool.query(`
       CREATE TABLE IF NOT EXISTS dac_users (
         user_id VARCHAR(50) PRIMARY KEY,
@@ -34,6 +34,7 @@ app.post('/api/test-db', async (req, res) => {
         password VARCHAR(255) NOT NULL,
         full_name VARCHAR(255),
         role VARCHAR(20) DEFAULT 'agent',
+        permissions TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -79,8 +80,11 @@ app.post('/api/test-db', async (req, res) => {
 // ENDPOINTS USUARIOS
 app.get('/api/users', ensurePool, async (req, res) => {
   try {
-    const result = await pool.query('SELECT user_id as id, username, full_name as name, role FROM dac_users ORDER BY created_at DESC');
-    res.json(result.rows);
+    const result = await pool.query('SELECT user_id as id, username, full_name as name, role, permissions FROM dac_users ORDER BY created_at DESC');
+    res.json(result.rows.map(r => ({
+      ...r,
+      permissions: r.permissions ? r.permissions.split(',') : []
+    })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -89,14 +93,17 @@ app.post('/api/users', ensurePool, async (req, res) => {
   try {
     const countRes = await pool.query('SELECT COUNT(*) FROM dac_users');
     const isFirstUser = parseInt(countRes.rows[0].count) === 0;
-    // Si es el primero o ya viene como admin desde local, respetamos el privilegio
     const finalRole = (isFirstUser || u.role === 'admin') ? 'admin' : 'agent';
+    const permissionsStr = u.permissions ? u.permissions.join(',') : 'dashboard';
 
     await pool.query(`
-      INSERT INTO dac_users (user_id, username, password, full_name, role)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role
-    `, [u.id, u.username, u.password, u.name, finalRole]);
+      INSERT INTO dac_users (user_id, username, password, full_name, role, permissions)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (username) DO UPDATE SET 
+        role = EXCLUDED.role, 
+        permissions = EXCLUDED.permissions,
+        password = EXCLUDED.password
+    `, [u.id, u.username, u.password, u.name, finalRole, permissionsStr]);
     
     res.status(201).json({ role: finalRole });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -105,9 +112,11 @@ app.post('/api/users', ensurePool, async (req, res) => {
 app.post('/api/login', ensurePool, async (req, res) => {
   const { username, password } = req.body;
   try {
-    const result = await pool.query('SELECT user_id as id, username, full_name as name, role FROM dac_users WHERE username = $1 AND password = $2', [username, password]);
+    const result = await pool.query('SELECT user_id as id, username, full_name as name, role, permissions FROM dac_users WHERE username = $1 AND password = $2', [username, password]);
     if (result.rows.length > 0) {
-      res.json(result.rows[0]);
+      const user = result.rows[0];
+      user.permissions = user.permissions ? user.permissions.split(',') : [];
+      res.json(user);
     } else {
       res.status(401).json({ error: 'Credenciales inválidas' });
     }
@@ -116,27 +125,18 @@ app.post('/api/login', ensurePool, async (req, res) => {
 
 app.put('/api/users/:id', ensurePool, async (req, res) => {
   const { id } = req.params;
-  const { role } = req.body;
+  const { role, permissions } = req.body;
+  const permissionsStr = permissions ? permissions.join(',') : '';
   try {
-    await pool.query('UPDATE dac_users SET role = $1 WHERE user_id = $2', [role, id]);
+    await pool.query('UPDATE dac_users SET role = $1, permissions = $2 WHERE user_id = $3', [role, permissionsStr, id]);
     res.sendStatus(200);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ENDPOINTS INCIDENCIAS - CORRECCIÓN DE MAPEADO
+// ENDPOINTS INCIDENCIAS
 app.get('/api/complaints', ensurePool, async (req, res) => {
-  const { start, end } = req.query;
   try {
-    let query = 'SELECT * FROM medical_incidences';
-    const params = [];
-    if (start && end) {
-      query += ' WHERE incidence_date BETWEEN $1 AND $2';
-      params.push(start, end);
-    }
-    query += ' ORDER BY registered_at DESC';
-    const result = await pool.query(query, params);
-    
-    // Mapeo explícito para que el frontend reciba los campos correctos
+    const result = await pool.query('SELECT * FROM medical_incidences ORDER BY registered_at DESC');
     const mapped = result.rows.map(r => ({
       id: r.audit_id,
       date: r.incidence_date ? new Date(r.incidence_date).toISOString().split('T')[0] : '',
@@ -162,31 +162,24 @@ app.post('/api/complaints', ensurePool, async (req, res) => {
   const c = req.body;
   try {
     const query = `INSERT INTO medical_incidences 
-      (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, complaint_description, current_status, priority_level, satisfaction_score, ai_sentiment, ai_suggested_response)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, complaint_description, current_status, priority_level, satisfaction_score, ai_sentiment, ai_suggested_response, management_solution, resolved_by_admin)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (audit_id) DO UPDATE SET
       current_status = EXCLUDED.current_status,
       management_solution = EXCLUDED.management_solution,
-      resolved_by_admin = EXCLUDED.resolved_by_admin`;
+      resolved_by_admin = EXCLUDED.resolved_by_admin,
+      patient_name = EXCLUDED.patient_name,
+      incidence_date = EXCLUDED.incidence_date`;
     
     await pool.query(query, [
-      c.id, 
-      c.date, 
-      c.patientName, 
-      c.patientPhone || null, 
-      c.doctorName || null, 
-      c.specialty || null, 
-      c.area || null, 
-      c.description, 
-      c.status, 
-      c.priority, 
-      c.satisfaction, 
-      c.sentiment || null, 
-      c.suggestedResponse || null
+      c.id, c.date, c.patientName, c.patientPhone || null, 
+      c.doctorName || null, c.specialty || null, c.area || null, 
+      c.description, c.status, c.priority, c.satisfaction, 
+      c.sentiment || null, c.suggestedResponse || null,
+      c.managementResponse || null, c.resolvedBy || null
     ]);
     res.sendStatus(201);
   } catch (err) { 
-    console.error(err);
     res.status(500).json({ error: err.message }); 
   }
 });
@@ -222,4 +215,4 @@ app.post('/api/daily-stats', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(3008, '0.0.0.0', () => console.log('🚀 Servidor DAC v4.8 Activo en 3008'));
+app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend v4.9 con Sincronización Automática'));

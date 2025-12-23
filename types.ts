@@ -1,3 +1,4 @@
+
 export enum ComplaintStatus {
   PENDIENTE = 'Pendiente',
   PROCESO = 'En Proceso',
@@ -42,6 +43,7 @@ export interface User {
   password?: string;
   name: string;
   role: 'admin' | 'agent';
+  permissions: string[]; // ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
 }
 
 export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'settings';

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Complaint, View, User, ComplaintStatus } from './types';
 import { Dashboard } from './components/Dashboard';
 import { ComplaintForm } from './components/ComplaintForm';
@@ -30,33 +30,57 @@ const App: React.FC = () => {
     localStorage.setItem('dac_users', JSON.stringify(users));
   }, [users]);
 
-  // Chequeo de conexión y carga de datos inicial
+  const autoSync = useCallback(async () => {
+    const localComplaints = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+    const localUsers = JSON.parse(localStorage.getItem('dac_users') || '[]');
+    if (localComplaints.length === 0 && localUsers.length === 0) return;
+
+    setNotification({ msg: 'Sincronizando automáticamente...', type: 'success' });
+    let cCount = 0;
+    let uCount = 0;
+
+    for (const u of localUsers) {
+      const ok = await dbService.saveUser(u);
+      if (ok) uCount++;
+    }
+    for (const c of localComplaints) {
+      const ok = await dbService.saveComplaint(c);
+      if (ok) cCount++;
+    }
+    
+    // Una vez sincronizado, refrescar lista desde el servidor
+    const remoteData = await dbService.fetchComplaints();
+    if (remoteData.length > 0) setComplaints(remoteData);
+    
+    setNotification({ msg: `Sincronizados: ${uCount} USR / ${cCount} INC`, type: 'success' });
+    setTimeout(() => setNotification(null), 4000);
+  }, []);
+
   useEffect(() => {
     const init = async () => {
       const connected = await dbService.testConnection({});
       setIsOnline(connected);
       if (connected) {
+        await autoSync();
         const remoteComplaints = await dbService.fetchComplaints();
         if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
       }
     };
     init();
-  }, []);
+  }, [autoSync]);
 
   const handleAddComplaint = async (c: Complaint) => {
     const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-    localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
+    const updatedLocal = [c, ...local];
+    localStorage.setItem('dac_complaints', JSON.stringify(updatedLocal));
     setComplaints(prev => [c, ...prev]);
     
-    let success = false;
     if (isOnline) {
-      success = await dbService.saveComplaint(c);
+      const success = await dbService.saveComplaint(c);
+      setNotification({ msg: success ? 'Sincronizado con Postgres' : 'Fallo de red', type: success ? 'success' : 'error' });
+    } else {
+      setNotification({ msg: 'Guardado Localmente', type: 'success' });
     }
-    
-    setNotification({ 
-      msg: success ? 'Sincronizado con Postgres' : 'Guardado Localmente', 
-      type: success ? 'success' : 'error' 
-    });
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -74,14 +98,14 @@ const App: React.FC = () => {
     const p = fd.get('pass') as string;
 
     if (isRegisterMode) {
-      // Regla: El primer usuario local siempre es admin
       const isFirst = users.length === 0;
       const newUser: User = { 
         id: `USR-${Date.now().toString().slice(-4)}`, 
         username: u, 
         password: p, 
         name: u, 
-        role: isFirst ? 'admin' : 'agent' 
+        role: isFirst ? 'admin' : 'agent',
+        permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
       };
       
       let finalUser = newUser;
@@ -107,11 +131,22 @@ const App: React.FC = () => {
 
     const found = users.find(x => x.username === u && x.password === p);
     if (found || (u === 'admin' && p === 'admin')) {
-      setCurrentUser(found || { id: '1', name: 'Super Admin', username: 'admin', role: 'admin' });
+      setCurrentUser(found || { 
+        id: '1', name: 'Super Admin', username: 'admin', role: 'admin',
+        permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
+      });
       setIsLoggedIn(true);
     } else {
       alert('Error: Credenciales no válidas.');
     }
+  };
+
+  // Filtrar vistas por permisos
+  const hasPermission = (view: View) => {
+    if (!currentUser) return false;
+    // Ajustes siempre visible según solicitud
+    if (view === 'settings') return true; 
+    return currentUser.permissions.includes(view);
   };
 
   return (
@@ -121,7 +156,7 @@ const App: React.FC = () => {
           <div className="glass-card p-10 w-full max-w-md shadow-2xl border-orange-200">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-900 rounded-3xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-black">CD</div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v4.8</span></h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v4.9</span></h1>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Hospital Management Node</p>
             </div>
             <form onSubmit={handleAuth} className="space-y-4">
@@ -158,8 +193,8 @@ const App: React.FC = () => {
                 { id: 'incidences', label: 'Incidencias Reportadas', icon: '📑' },
                 { id: 'new-incidence', label: 'Nueva Incidencia', icon: '➕' },
                 { id: 'reports', label: 'Centro de Reportes', icon: '📋' },
-                { id: 'settings', label: 'Ajustes Nodo', icon: '⚙️', adminOnly: true }
-              ].filter(item => !item.adminOnly || currentUser?.role === 'admin').map((item) => (
+                { id: 'settings', label: 'Ajustes Nodo', icon: '⚙️' }
+              ].filter(item => hasPermission(item.id as View)).map((item) => (
                 <button key={item.id} onClick={() => setActiveView(item.id as View)} className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeView === item.id ? 'sidebar-item-active' : 'text-slate-400 hover:bg-orange-50'}`}>
                   <span className="text-lg">{item.icon}</span>
                   {item.label}
@@ -187,14 +222,22 @@ const App: React.FC = () => {
               {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} isOnline={isOnline} />}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
               {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
-              {activeView === 'settings' && currentUser?.role === 'admin' && (
-                <Settings areas={areas} setAreas={setAreas} specialties={specialties} setSpecialties={setSpecialties} isOnline={isOnline} onConnStatusChange={async (s) => {
-                  setIsOnline(s);
-                  if (s) {
-                    const data = await dbService.fetchComplaints();
-                    setComplaints(data);
-                  }
-                }} />
+              {activeView === 'settings' && (
+                <Settings 
+                  areas={areas} 
+                  setAreas={setAreas} 
+                  specialties={specialties} 
+                  setSpecialties={setSpecialties} 
+                  isOnline={isOnline} 
+                  onConnStatusChange={async (s) => {
+                    setIsOnline(s);
+                    if (s) {
+                      await autoSync();
+                      const data = await dbService.fetchComplaints();
+                      setComplaints(data);
+                    }
+                  }} 
+                />
               )}
             </div>
           </main>

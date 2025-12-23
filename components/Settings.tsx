@@ -19,6 +19,14 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
   const [syncing, setSyncing] = useState(false);
   const [dbUsers, setDbUsers] = useState<User[]>([]);
   
+  // Estado para creación de usuario
+  const [newUserForm, setNewUserForm] = useState({
+    username: '',
+    password: '',
+    role: 'agent' as 'admin' | 'agent',
+    permissions: ['dashboard'] as string[]
+  });
+
   const [dbParams, setDbParams] = useState({
     host: '192.168.99.180',
     port: '3008',
@@ -62,16 +70,16 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
-        if (confirm("¿Está seguro de importar este backup? Se sobrescribirán los datos locales actuales.")) {
+        if (confirm("¿Importar backup? Se sobrescribirá la base local.")) {
           if (data.complaints) localStorage.setItem('dac_complaints', JSON.stringify(data.complaints));
           if (data.users) localStorage.setItem('dac_users', JSON.stringify(data.users));
           if (data.areas) setAreas(data.areas);
           if (data.specialties) setSpecialties(data.specialties);
-          alert("Backup importado con éxito. Refrescando sistema...");
+          alert("Backup restaurado. Sincronizando si hay red...");
           window.location.reload();
         }
       } catch {
-        alert("Error al procesar el archivo de backup.");
+        alert("Error al procesar el archivo.");
       }
     };
     reader.readAsText(file);
@@ -82,70 +90,69 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
     const localUsers = JSON.parse(localStorage.getItem('dac_users') || '[]');
     
     if (localComplaints.length === 0 && localUsers.length === 0) {
-      return alert("No hay datos locales para migrar.");
+      return alert("Sin datos locales.");
     }
 
-    if (!confirm(`Se enviarán ${localComplaints.length} incidencias y ${localUsers.length} usuarios al servidor. ¿Continuar?`)) return;
-    
     setSyncing(true);
-    let cCount = 0;
-    let uCount = 0;
-
+    let cCount = 0, uCount = 0;
     try {
-      // Migrar Usuarios
       for (const u of localUsers) {
-        const ok = await dbService.saveUser(u);
-        if (ok) uCount++;
+        if (await dbService.saveUser(u)) uCount++;
       }
-
-      // Migrar Incidencias
       for (const c of localComplaints) {
-        const ok = await dbService.saveComplaint(c);
-        if (ok) cCount++;
+        if (await dbService.saveComplaint(c)) cCount++;
       }
-      
-      alert(`Sincronización Exitosa:\n- ${uCount} Usuarios\n- ${cCount} Incidencias`);
+      alert(`Sincronización manual: ${uCount} USR / ${cCount} INC`);
       loadUsers();
-    } catch (err) {
-      alert("Error durante la migración: " + err);
-    } finally {
-      setSyncing(false);
-    }
+    } catch (err) { alert("Fallo: " + err); } 
+    finally { setSyncing(false); }
   };
 
-  const handleClearTables = async () => {
-    const pass = prompt("SEGURIDAD: Ingrese clave de administrador para LIMPIAR TABLAS:");
-    if (pass === 'admin') {
-      if (confirm("⚠️ ADVERTENCIA: Se borrarán todos los datos del servidor para producción. ¿Proceder?")) {
-        const ok = await dbService.clearData();
-        if (ok) {
-          alert("Base de datos limpia.");
-          window.location.reload();
-        } else {
-          alert("Error al limpiar servidor.");
-        }
-      }
-    } else {
-      alert("Clave incorrecta.");
+  const handleCreateUser = async () => {
+    if (!newUserForm.username || !newUserForm.password) return alert("Complete todos los campos");
+    
+    const newUser: User = {
+      id: `USR-${Date.now().toString().slice(-4)}`,
+      username: newUserForm.username,
+      password: newUserForm.password,
+      name: newUserForm.username,
+      role: newUserForm.role,
+      permissions: newUserForm.permissions
+    };
+
+    // Guardar Local
+    const localUsers = JSON.parse(localStorage.getItem('dac_users') || '[]');
+    localStorage.setItem('dac_users', JSON.stringify([...localUsers, newUser]));
+
+    // Guardar Online si existe
+    if (isOnline) {
+      await dbService.saveUser(newUser);
+      loadUsers();
     }
+    
+    setNewUserForm({ username: '', password: '', role: 'agent', permissions: ['dashboard'] });
+    alert("Usuario creado con éxito.");
   };
 
-  const toggleUserRole = async (user: User) => {
-    const newRole = user.role === 'admin' ? 'agent' : 'admin';
-    if (!confirm(`¿Cambiar rol de ${user.username} a ${newRole}?`)) return;
-    const ok = await dbService.updateUserRole(user.id, newRole);
-    if (ok) loadUsers();
+  const togglePermission = (perm: string) => {
+    setNewUserForm(prev => ({
+      ...prev,
+      permissions: prev.permissions.includes(perm) 
+        ? prev.permissions.filter(p => p !== perm) 
+        : [...prev.permissions, perm]
+    }));
   };
 
   return (
     <div className="space-y-12 pb-20">
+      {/* SECCIÓN CONFIGURACIÓN NODO */}
       <div className="glass-card p-10 bg-slate-900 text-white shadow-2xl relative overflow-hidden">
         <div className="flex justify-between items-start mb-6">
           <div>
             <h3 className="text-xl font-black mb-2 flex items-center gap-3">
-              <span className="text-2xl">🐘</span> Configuración del Nodo Central
+              <span className="text-2xl">🐘</span> Nodo Central de Datos
             </h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PostgreSQL Server & Production Tools</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sincronización Automática Activa</p>
           </div>
           {!isUnlocked && (
             <button onClick={() => setIsUnlocked(true)} className="px-8 py-4 bg-amber-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-amber-500 transition-all">Configurar Servidor</button>
@@ -163,62 +170,112 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
               <button onClick={async () => {
                 const ok = await dbService.testConnection(dbParams);
                 onConnStatusChange(ok);
-                alert(ok ? '✅ Conexión establecida' : '❌ Error de conexión');
-              }} className="bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest">Vincular Nodo</button>
+                alert(ok ? '✅ Nodo vinculado' : '❌ Error de conexión');
+              }} className="bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase">Vincular Nodo</button>
             </div>
             
             <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row gap-4">
               <button onClick={handleMigration} disabled={syncing} className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">
-                {syncing ? 'Sincronizando...' : 'Migrar Todo al Servidor'}
+                {syncing ? 'Sincronizando...' : 'Forzar Sincronización Manual'}
               </button>
-              <button onClick={handleClearTables} className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">
-                🗑️ Limpiar Tablas de Pruebas
+              <button onClick={async () => {
+                if (confirm("¿Limpiar tablas del servidor?")) {
+                  const ok = await dbService.clearData();
+                  if (ok) window.location.reload();
+                }
+              }} className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black text-[10px] uppercase">
+                🗑️ Limpiar Tablas de Producción
               </button>
             </div>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
-          <h3 className="text-xl font-black mb-6 text-slate-900 uppercase">💾 Copia de Seguridad</h3>
-          <p className="text-xs text-slate-400 mb-8 font-medium">Exporta o importa toda la información local en formato JSON.</p>
-          <div className="flex flex-col gap-4">
-            <button onClick={handleExportBackup} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">Generar Backup JSON</button>
-            <div className="relative">
-              <input type="file" accept=".json" onChange={handleImportBackup} className="absolute inset-0 opacity-0 cursor-pointer" />
-              <button className="w-full py-4 bg-amber-50 text-amber-600 border border-amber-200 rounded-2xl font-black text-[10px] uppercase tracking-widest">Importar Backup JSON</button>
+      {/* GESTION DE USUARIOS Y ACCESOS */}
+      <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
+        <h3 className="text-xl font-black mb-10 text-slate-900 uppercase">👥 Usuarios y Niveles de Acceso</h3>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
+          {/* Formulario de Creación */}
+          <div className="space-y-6 bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Crear Nuevo Auditor</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <input className="p-4 rounded-xl text-sm font-bold border border-slate-200 outline-none" placeholder="Username" value={newUserForm.username} onChange={e => setNewUserForm({...newUserForm, username: e.target.value})} />
+              <input className="p-4 rounded-xl text-sm font-bold border border-slate-200 outline-none" type="password" placeholder="Password" value={newUserForm.password} onChange={e => setNewUserForm({...newUserForm, password: e.target.value})} />
             </div>
+            <div className="space-y-4">
+               <label className="text-[9px] font-black text-slate-400 uppercase">Rol Maestro</label>
+               <div className="flex gap-4">
+                 {['admin', 'agent'].map(r => (
+                   <button key={r} onClick={() => setNewUserForm({...newUserForm, role: r as any})} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest ${newUserForm.role === r ? 'bg-slate-900 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>{r}</button>
+                 ))}
+               </div>
+            </div>
+            <div className="space-y-4">
+               <label className="text-[9px] font-black text-slate-400 uppercase">Módulos Permitidos</label>
+               <div className="flex flex-wrap gap-2">
+                 {['dashboard', 'incidences', 'new-incidence', 'reports', 'settings'].map(p => (
+                   <button key={p} onClick={() => togglePermission(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${newUserForm.permissions.includes(p) ? 'bg-amber-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>{p}</button>
+                 ))}
+               </div>
+            </div>
+            <button onClick={handleCreateUser} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-amber-500 transition-all">Registrar Auditor</button>
           </div>
-        </div>
 
-        <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
-          <h3 className="text-xl font-black mb-6 text-slate-900 uppercase">👥 Auditores en Nodo</h3>
-          <div className="overflow-x-auto max-h-[250px] scrollbar-hide">
-            <table className="w-full text-left">
-              <tbody className="divide-y divide-slate-100">
-                {dbUsers.map(user => (
-                  <tr key={user.id}>
-                    <td className="py-4">
-                      <p className="font-black text-slate-900 text-sm">{user.username}</p>
-                      <span className={`text-[8px] font-black uppercase ${user.role === 'admin' ? 'text-amber-500' : 'text-slate-400'}`}>{user.role}</span>
-                    </td>
-                    <td className="py-4 text-right">
-                      <button onClick={() => toggleUserRole(user)} className="px-3 py-1 bg-slate-100 rounded-lg text-[8px] font-black uppercase hover:bg-amber-100">Rol</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Listado de Usuarios */}
+          <div className="overflow-x-auto max-h-[500px] scrollbar-hide">
+             <table className="w-full text-left">
+               <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400">
+                 <tr>
+                   <th className="px-4 py-3">Nombre / Rol</th>
+                   <th className="px-4 py-3">Accesos</th>
+                   <th className="px-4 py-3">Acción</th>
+                 </tr>
+               </thead>
+               <tbody className="divide-y divide-slate-100">
+                 {dbUsers.map(user => (
+                   <tr key={user.id} className="text-xs">
+                     <td className="py-4 px-4">
+                       <p className="font-black text-slate-900">{user.username}</p>
+                       <span className={`text-[8px] font-black uppercase ${user.role === 'admin' ? 'text-amber-500' : 'text-slate-400'}`}>{user.role}</span>
+                     </td>
+                     <td className="py-4 px-4">
+                       <div className="flex flex-wrap gap-1">
+                         {user.permissions.map(p => <span key={p} className="bg-slate-100 text-[7px] font-black uppercase px-1.5 py-0.5 rounded text-slate-400">{p}</span>)}
+                       </div>
+                     </td>
+                     <td className="py-4 px-4">
+                       <button onClick={async () => {
+                         const nR = user.role === 'admin' ? 'agent' : 'admin';
+                         if (await dbService.updateUserRole(user.id, nR)) loadUsers();
+                       }} className="text-amber-500 font-black uppercase text-[8px]">Swap Rol</button>
+                     </td>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
           </div>
         </div>
       </div>
 
+      {/* COPIA DE SEGURIDAD INTEGRAL */}
+      <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
+        <h3 className="text-xl font-black mb-6 text-slate-900 uppercase">💾 Respaldo Integral del Sistema</h3>
+        <p className="text-xs text-slate-400 mb-8">Exporta incidencias, usuarios (con permisos), áreas y especialidades.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <button onClick={handleExportBackup} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase">Exportar JSON Maestro</button>
+          <div className="relative">
+            <input type="file" accept=".json" onChange={handleImportBackup} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <button className="w-full py-4 bg-amber-50 text-amber-600 border border-amber-200 rounded-2xl font-black text-[10px] uppercase">Importar JSON Maestro</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ÁREAS Y ESPECIALIDADES */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
-          <h3 className="text-xl font-black mb-8 flex items-center gap-4 text-slate-900 uppercase">🏢 Áreas</h3>
+          <h3 className="text-xl font-black mb-8 uppercase">🏢 Áreas Operativas</h3>
           <div className="flex gap-4 mb-8">
-            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="Ej. Odontología" />
+            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="Ej. Admisión" />
             <button onClick={() => { if(newArea) { setAreas([...areas, newArea]); setNewArea(''); } }} className="w-14 h-14 bg-amber-500 text-white rounded-2xl font-black text-2xl shadow-lg">+</button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -232,9 +289,9 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
         </div>
 
         <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
-          <h3 className="text-xl font-black mb-8 flex items-center gap-4 text-slate-900 uppercase">🎓 Especialidades</h3>
+          <h3 className="text-xl font-black mb-8 uppercase">🎓 Especialidades Médicas</h3>
           <div className="flex gap-4 mb-8">
-            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newSpec} onChange={e => setNewSpec(e.target.value)} placeholder="Ej. Pediatría" />
+            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newSpec} onChange={e => setNewSpec(e.target.value)} placeholder="Ej. Urología" />
             <button onClick={() => { if(newSpec) { setSpecialties([...specialties, newSpec]); setNewSpec(''); } }} className="w-14 h-14 bg-orange-500 text-white rounded-2xl font-black text-2xl shadow-lg">+</button>
           </div>
           <div className="flex flex-wrap gap-2">
