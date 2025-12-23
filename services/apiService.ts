@@ -15,6 +15,13 @@ export const dbService = {
     } catch { return false; }
   },
 
+  async repairDatabase(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/repair-db`, { method: 'POST' });
+      return response.ok;
+    } catch { return false; }
+  },
+
   // USUARIOS
   async fetchUsers(): Promise<User[]> {
     try {

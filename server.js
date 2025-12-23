@@ -9,8 +9,54 @@ app.use(express.json({ limit: '50mb' }));
 
 let pool = null;
 
+const createTables = async (targetPool) => {
+  // Esquema de Usuarios
+  await targetPool.query(`
+    CREATE TABLE IF NOT EXISTS dac_users (
+      user_id VARCHAR(50) PRIMARY KEY,
+      username VARCHAR(100) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      full_name VARCHAR(255),
+      role VARCHAR(20) DEFAULT 'agent',
+      permissions TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Esquema de Incidencias
+  await targetPool.query(`
+    CREATE TABLE IF NOT EXISTS medical_incidences (
+      audit_id VARCHAR(50) PRIMARY KEY,
+      incidence_date DATE NOT NULL,
+      patient_name VARCHAR(255) NOT NULL,
+      patient_phone VARCHAR(50),
+      doctor_name VARCHAR(255),
+      specialty_name VARCHAR(100),
+      area_name VARCHAR(100),
+      complaint_description TEXT NOT NULL,
+      current_status VARCHAR(50) DEFAULT 'Pendiente',
+      priority_level VARCHAR(50) DEFAULT 'Media',
+      satisfaction_score INTEGER,
+      ai_sentiment VARCHAR(50),
+      ai_suggested_response TEXT,
+      management_solution TEXT,
+      resolved_by_admin VARCHAR(150),
+      registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Esquema de Estadísticas
+  await targetPool.query(`
+    CREATE TABLE IF NOT EXISTS daily_stats (
+      stat_date DATE PRIMARY KEY,
+      patients_attended INTEGER DEFAULT 0,
+      patients_called INTEGER DEFAULT 0
+    );
+  `);
+};
+
 const ensurePool = (req, res, next) => {
-  if (!pool) return res.status(500).json({ error: 'PostgreSQL no conectado.' });
+  if (!pool) return res.status(500).json({ error: 'PostgreSQL no conectado. Vincule el nodo primero.' });
   next();
 };
 
@@ -25,53 +71,18 @@ app.post('/api/test-db', async (req, res) => {
       port: config.port || 5432,
     });
     await newPool.query('SELECT NOW()');
-    
-    // Esquema de Usuarios
-    await newPool.query(`
-      CREATE TABLE IF NOT EXISTS dac_users (
-        user_id VARCHAR(50) PRIMARY KEY,
-        username VARCHAR(100) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        full_name VARCHAR(255),
-        role VARCHAR(20) DEFAULT 'agent',
-        permissions TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Esquema de Incidencias
-    await newPool.query(`
-      CREATE TABLE IF NOT EXISTS medical_incidences (
-        audit_id VARCHAR(50) PRIMARY KEY,
-        incidence_date DATE NOT NULL,
-        patient_name VARCHAR(255) NOT NULL,
-        patient_phone VARCHAR(50),
-        doctor_name VARCHAR(255),
-        specialty_name VARCHAR(100),
-        area_name VARCHAR(100),
-        complaint_description TEXT NOT NULL,
-        current_status VARCHAR(50) DEFAULT 'Pendiente',
-        priority_level VARCHAR(50) DEFAULT 'Media',
-        satisfaction_score INTEGER,
-        ai_sentiment VARCHAR(50),
-        ai_suggested_response TEXT,
-        management_solution TEXT,
-        resolved_by_admin VARCHAR(150),
-        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Esquema de Estadísticas
-    await newPool.query(`
-      CREATE TABLE IF NOT EXISTS daily_stats (
-        stat_date DATE PRIMARY KEY,
-        patients_attended INTEGER DEFAULT 0,
-        patients_called INTEGER DEFAULT 0
-      );
-    `);
-    
+    await createTables(newPool);
     pool = newPool;
     res.status(200).json({ status: 'connected' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/repair-db', ensurePool, async (req, res) => {
+  try {
+    await createTables(pool);
+    res.status(200).json({ status: 'repaired' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -94,13 +105,12 @@ app.post('/api/users', ensurePool, async (req, res) => {
     const countRes = await pool.query('SELECT COUNT(*) FROM dac_users');
     const isFirstUser = parseInt(countRes.rows[0].count) === 0;
     
-    // Si es el primer usuario de la DB, forzar admin y todos los permisos
     const finalRole = (isFirstUser || u.role === 'admin') ? 'admin' : 'agent';
     const permissionsStr = (isFirstUser || !u.permissions || u.permissions.length === 0) 
       ? 'dashboard,incidences,new-incidence,reports,settings' 
       : u.permissions.join(',');
 
-    await pool.query(`
+    const result = await pool.query(`
       INSERT INTO dac_users (user_id, username, password, full_name, role, permissions)
       VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (username) DO UPDATE SET 
@@ -108,10 +118,16 @@ app.post('/api/users', ensurePool, async (req, res) => {
         permissions = EXCLUDED.permissions,
         password = EXCLUDED.password,
         full_name = EXCLUDED.full_name
+      RETURNING user_id as id, username, full_name as name, role, permissions
     `, [u.id, u.username, u.password, u.name || u.username, finalRole, permissionsStr]);
     
-    res.status(201).json({ id: u.id, username: u.username, name: u.name || u.username, role: finalRole, permissions: permissionsStr.split(',') });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const saved = result.rows[0];
+    saved.permissions = saved.permissions ? saved.permissions.split(',') : [];
+    res.status(201).json(saved);
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.post('/api/login', ensurePool, async (req, res) => {
@@ -218,4 +234,4 @@ app.post('/api/daily-stats', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend DAC v5.2 Ready'));
+app.listen(3008, '0.0.0.0', () => console.log('🚀 DAC Node Central v5.3 Online'));
