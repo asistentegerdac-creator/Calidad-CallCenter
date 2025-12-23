@@ -8,12 +8,12 @@ const getStoredConfig = () => {
   return saved ? JSON.parse(saved) : null;
 };
 
-// Wrapper para manejar reconexión automática si el servidor responde con 503
+// Wrapper inteligente que auto-vincula el nodo si detecta pérdida de pool en el servidor
 async function fetchWithRetry(url: string, options: any = {}): Promise<Response> {
-  let response = await fetch(url, options);
+  const response = await fetch(url, options);
   
   if (response.status === 503) {
-    console.warn("Nodo Central reiniciado. Intentando auto-vincular...");
+    console.warn("⚠️ Pool del Servidor perdido. Intentando reconexión automática...");
     const config = getStoredConfig();
     if (config) {
       const rebind = await fetch(`${API_BASE}/test-db`, {
@@ -22,8 +22,8 @@ async function fetchWithRetry(url: string, options: any = {}): Promise<Response>
         body: JSON.stringify(config)
       });
       if (rebind.ok) {
-        console.log("Auto-vínculo exitoso. Reintentando petición original...");
-        response = await fetch(url, options);
+        console.log("✅ Auto-vínculo exitoso. Reintentando operación...");
+        return await fetch(url, options);
       }
     }
   }
@@ -55,9 +55,7 @@ export const dbService = {
         headers: { 'Content-Type': 'application/json' }
       });
       return response.ok;
-    } catch (e) {
-      return false; 
-    }
+    } catch { return false; }
   },
 
   async fetchUsers(): Promise<User[]> {
@@ -67,23 +65,23 @@ export const dbService = {
     } catch { return []; }
   },
 
-  async login(username: string, password: string): Promise<User | null> {
-    try {
-      const response = await fetchWithRetry(`${API_BASE}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      return response.ok ? await response.json() : null;
-    } catch { return null; }
-  },
-
   async saveUser(user: User): Promise<User | null> {
     try {
       const response = await fetchWithRetry(`${API_BASE}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user)
+      });
+      return response.ok ? await response.json() : null;
+    } catch { return null; }
+  },
+
+  async login(username: string, password: string): Promise<User | null> {
+    try {
+      const response = await fetchWithRetry(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
       });
       return response.ok ? await response.json() : null;
     } catch { return null; }
@@ -120,7 +118,6 @@ export const dbService = {
     } catch { return false; }
   },
 
-  // Fix: Implementation of missing fetchDailyStats for Dashboard
   async fetchDailyStats(): Promise<DailyStat[]> {
     try {
       const response = await fetchWithRetry(`${API_BASE}/stats`);
@@ -128,7 +125,6 @@ export const dbService = {
     } catch { return []; }
   },
 
-  // Fix: Implementation of missing saveDailyStat for Dashboard
   async saveDailyStat(stat: DailyStat): Promise<boolean> {
     try {
       const response = await fetchWithRetry(`${API_BASE}/stats`, {
