@@ -1,3 +1,4 @@
+
 import { Complaint, ComplaintStatus, DailyStat, User } from '../types';
 
 const API_BASE = 'http://192.168.99.180:3008/api';
@@ -22,15 +23,26 @@ export const dbService = {
     } catch { return []; }
   },
 
-  async saveUser(user: User): Promise<boolean> {
+  async login(username: string, password: string): Promise<User | null> {
+    try {
+      const response = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      return response.ok ? await response.json() : null;
+    } catch { return null; }
+  },
+
+  async saveUser(user: User): Promise<{ role: 'admin' | 'agent' } | null> {
     try {
       const response = await fetch(`${API_BASE}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user)
       });
-      return response.ok;
-    } catch { return false; }
+      return response.ok ? await response.json() : null;
+    } catch { return null; }
   },
 
   async updateUserRole(id: string, role: string): Promise<boolean> {

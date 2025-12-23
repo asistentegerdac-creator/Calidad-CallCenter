@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -86,12 +87,18 @@ app.get('/api/users', ensurePool, async (req, res) => {
 app.post('/api/users', ensurePool, async (req, res) => {
   const u = req.body;
   try {
+    // Verificar si es el primer usuario
+    const countRes = await pool.query('SELECT COUNT(*) FROM dac_users');
+    const isFirstUser = parseInt(countRes.rows[0].count) === 0;
+    const finalRole = isFirstUser ? 'admin' : (u.role || 'agent');
+
     await pool.query(`
       INSERT INTO dac_users (user_id, username, password, full_name, role)
       VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (username) DO NOTHING
-    `, [u.id, u.username, u.password, u.name, u.role]);
-    res.sendStatus(201);
+    `, [u.id, u.username, u.password, u.name, finalRole]);
+    
+    res.status(201).json({ role: finalRole });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -101,6 +108,19 @@ app.put('/api/users/:id', ensurePool, async (req, res) => {
   try {
     await pool.query('UPDATE dac_users SET role = $1 WHERE user_id = $2', [role, id]);
     res.sendStatus(200);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// LOGIN OFICIAL DESDE DB
+app.post('/api/login', ensurePool, async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const result = await pool.query('SELECT user_id as id, username, full_name as name, role FROM dac_users WHERE username = $1 AND password = $2', [username, password]);
+    if (result.rows.length > 0) {
+      res.json(result.rows[0]);
+    } else {
+      res.status(401).json({ error: 'Credenciales inválidas' });
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -197,4 +217,4 @@ app.post('/api/daily-stats', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend DAC v4.5 Pro en puerto 3008'));
+app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend DAC v4.6 Enterprise en puerto 3008'));
