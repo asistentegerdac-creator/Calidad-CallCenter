@@ -1,3 +1,4 @@
+
 export enum ComplaintStatus {
   PENDIENTE = 'Pendiente',
   PROCESO = 'En Proceso',
@@ -27,36 +28,12 @@ export interface Complaint {
   managementResponse?: string;
 }
 
-export interface CallRecord {
-  id: string;
-  date: string;
-  totalPatients: number;
-  calledCount: number;
-  notCalledCount: number;
-  agent: string;
-}
-
-export interface PhoneConfig {
-  sipDomain: string;
-  sipUser: string;
-  sipPass: string;
-  status: 'offline' | 'online' | 'connecting';
-}
-
-export interface IPCall {
-  id: string;
-  number: string;
-  status: 'ringing' | 'active' | 'missed' | 'ended';
-  timestamp: string;
-  duration: number;
-  direction: 'incoming' | 'outgoing';
-}
-
 export interface User {
   id: string;
   username: string;
+  password?: string;
   name: string;
   role: 'admin' | 'agent';
 }
 
-export type View = 'dashboard' | 'complaints' | 'crm' | 'reports' | 'settings';
+export type View = 'dashboard' | 'complaints' | 'reports' | 'settings';

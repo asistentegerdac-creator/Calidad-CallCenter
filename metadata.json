@@ -1,7 +1,5 @@
 {
-  "name": "DAC Hospital Intelligence PRO",
-  "description": "Enterprise-grade Medical Quality & SIP Call Center.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
+  "name": "CALIDAD DAC",
+  "description": "Sistema de Gestión de Calidad y Auditoría Médica.",
+  "requestFramePermissions": []
 }
