@@ -41,9 +41,9 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
     setTestStatus(success ? 'success' : 'error');
     onConnStatusChange(success);
     if (success) {
-      alert('¡Conexión exitosa con PostgreSQL! Los datos ahora se sincronizarán.');
+      alert('¡Conexión exitosa! Todas las tablas necesarias han sido verificadas/creadas en PostgreSQL.');
     } else {
-      alert('Error: No se pudo conectar al servidor en ' + dbParams.host + ':' + dbParams.port + '. Verifique que el servidor Node.js esté corriendo.');
+      alert('Error: No se pudo conectar al servidor en ' + dbParams.host + ':' + dbParams.port);
     }
   };
 
@@ -66,7 +66,8 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
   };
 
   const generateSchema = () => {
-    const sql = `-- CALIDAD DAC v3.0 - POSTGRESQL PRODUCTION SCHEMA
+    const sql = `-- SCRIPT COMPLETO DE BASE DE DATOS - CALIDAD DAC v3.5
+-- 1. Tabla de Incidencias Médicas
 CREATE TABLE IF NOT EXISTS medical_incidences (
     audit_id VARCHAR(50) PRIMARY KEY,
     incidence_date DATE NOT NULL,
@@ -84,7 +85,37 @@ CREATE TABLE IF NOT EXISTS medical_incidences (
     management_solution TEXT,
     resolved_by_admin VARCHAR(150),
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);`;
+);
+
+-- 2. Tabla de Usuarios del Sistema
+CREATE TABLE IF NOT EXISTS app_users (
+    id VARCHAR(50) PRIMARY KEY,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    name VARCHAR(255),
+    role VARCHAR(50) DEFAULT 'admin'
+);
+
+-- 3. Tabla de Áreas Hospitalarias
+CREATE TABLE IF NOT EXISTS hospital_areas (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- 4. Tabla de Especialidades Médicas
+CREATE TABLE IF NOT EXISTS hospital_specialties (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- Datos iniciales sugeridos
+INSERT INTO hospital_areas (name) VALUES 
+('Urgencias'), ('UCI'), ('Consultas Externas'), ('Laboratorio'), ('Hospitalización')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO hospital_specialties (name) VALUES 
+('Medicina General'), ('Pediatría'), ('Cardiología'), ('Ginecología'), ('Traumatología')
+ON CONFLICT DO NOTHING;`;
     setGeneratedSql(sql);
   };
 
@@ -170,7 +201,7 @@ CREATE TABLE IF NOT EXISTS medical_incidences (
                   disabled={testStatus === 'testing'}
                   className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl transition-all ${testStatus === 'testing' ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white hover:bg-amber-600'}`}
                 >
-                  {testStatus === 'testing' ? 'PROBANDO...' : 'TEST & GUARDAR'}
+                  {testStatus === 'testing' ? 'PROBANDO...' : 'TEST & CONFIGURAR'}
                 </button>
               </div>
             </div>
@@ -178,15 +209,18 @@ CREATE TABLE IF NOT EXISTS medical_incidences (
             <div className="pt-10 border-t-2 border-slate-50">
               <div className="flex justify-between items-center mb-8">
                 <div>
-                  <h4 className="text-2xl font-black text-slate-900">Scripts Automáticos</h4>
-                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mt-1">Detección estructural dinámica</p>
+                  <h4 className="text-2xl font-black text-slate-900">Scripts de Base de Datos</h4>
+                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mt-1">Esquema relacional completo para PostgreSQL</p>
                 </div>
-                <button onClick={generateSchema} className="px-12 py-5 border-2 border-slate-900 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-md">Generar SQL</button>
+                <button onClick={generateSchema} className="px-12 py-5 border-2 border-slate-900 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-md">Generar Todos los Scripts</button>
               </div>
               {generatedSql && (
-                <pre className="bg-slate-900 text-amber-400 p-10 rounded-[3rem] text-[12px] font-mono shadow-2xl overflow-x-auto">
-                  <code>{generatedSql}</code>
-                </pre>
+                <div className="relative group">
+                  <pre className="bg-slate-900 text-amber-400 p-10 rounded-[3rem] text-[12px] font-mono shadow-2xl overflow-x-auto">
+                    <code>{generatedSql}</code>
+                  </pre>
+                  <button onClick={() => { navigator.clipboard.writeText(generatedSql); alert('Copiado al portapapeles'); }} className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white text-[9px] font-black px-4 py-2 rounded-xl transition-all">COPIAR SCRIPT</button>
+                </div>
               )}
             </div>
           </div>

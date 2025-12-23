@@ -16,7 +16,7 @@ const ensurePool = (req, res, next) => {
   next();
 };
 
-// Endpoint para probar conexión e inicializar tablas
+// Endpoint para probar conexión e inicializar todas las tablas del sistema
 app.post('/api/test-db', async (req, res) => {
   const config = req.body;
   
@@ -32,7 +32,7 @@ app.post('/api/test-db', async (req, res) => {
     // Probar conexión
     await newPool.query('SELECT NOW()');
     
-    // Crear tabla automáticamente si no existe
+    // 1. Tabla de Incidencias
     await newPool.query(`
       CREATE TABLE IF NOT EXISTS medical_incidences (
         audit_id VARCHAR(50) PRIMARY KEY,
@@ -54,8 +54,46 @@ app.post('/api/test-db', async (req, res) => {
       );
     `);
 
+    // 2. Tabla de Usuarios
+    await newPool.query(`
+      CREATE TABLE IF NOT EXISTS app_users (
+        id VARCHAR(50) PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        name VARCHAR(255),
+        role VARCHAR(50) DEFAULT 'admin'
+      );
+    `);
+
+    // 3. Tabla de Áreas Hospitalarias
+    await newPool.query(`
+      CREATE TABLE IF NOT EXISTS hospital_areas (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL
+      );
+    `);
+
+    // 4. Tabla de Especialidades
+    await newPool.query(`
+      CREATE TABLE IF NOT EXISTS hospital_specialties (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL
+      );
+    `);
+
+    // Insertar datos iniciales si están vacías (Seeding)
+    const areasCount = await newPool.query('SELECT COUNT(*) FROM hospital_areas');
+    if (parseInt(areasCount.rows[0].count) === 0) {
+      await newPool.query("INSERT INTO hospital_areas (name) VALUES ('Urgencias'), ('UCI'), ('Consultas Externas'), ('Laboratorio'), ('Hospitalización') ON CONFLICT DO NOTHING");
+    }
+
+    const specsCount = await newPool.query('SELECT COUNT(*) FROM hospital_specialties');
+    if (parseInt(specsCount.rows[0].count) === 0) {
+      await newPool.query("INSERT INTO hospital_specialties (name) VALUES ('Medicina General'), ('Pediatría'), ('Cardiología'), ('Ginecología'), ('Traumatología') ON CONFLICT DO NOTHING");
+    }
+
     pool = newPool;
-    console.log('✅ Base de Datos PostgreSQL Conectada e Inicializada');
+    console.log('✅ Sistema PostgreSQL Inicializado Completo');
     res.status(200).json({ status: 'connected' });
   } catch (err) {
     console.error('❌ Error de conexión:', err.message);
@@ -107,6 +145,18 @@ app.post('/api/complaints', ensurePool, async (req, res) => {
   }
 });
 
+// Sincronizar estructura automáticamente
+app.post('/api/sync-structure', ensurePool, async (req, res) => {
+  const { type, name } = req.body;
+  try {
+    const table = type === 'area' ? 'hospital_areas' : 'hospital_specialties';
+    await pool.query(`INSERT INTO ${table} (name) VALUES ($1) ON CONFLICT DO NOTHING`, [name]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Actualizar resolución
 app.put('/api/complaints/:id', ensurePool, async (req, res) => {
   const { id } = req.params;
@@ -124,11 +174,7 @@ app.put('/api/complaints/:id', ensurePool, async (req, res) => {
   }
 });
 
-app.post('/api/sync-structure', ensurePool, async (req, res) => {
-  res.json({ success: true });
-});
-
-// Puerto actualizado al solicitado por el usuario
+// Puerto solicitado
 const PORT = 3008;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor DAC corriendo en http://192.168.99.180:${PORT}`);
