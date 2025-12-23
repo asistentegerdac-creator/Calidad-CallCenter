@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Complaint, View, User, ComplaintStatus } from './types';
 import { Dashboard } from './components/Dashboard';
@@ -47,8 +46,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleAddComplaint = async (c: Complaint) => {
+    const currentLocal = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+    localStorage.setItem('dac_complaints', JSON.stringify([c, ...currentLocal]));
     setComplaints(prev => [c, ...prev]);
-    localStorage.setItem('dac_complaints', JSON.stringify([c, ...complaints]));
     
     let success = false;
     if (isOnline) {
@@ -76,12 +76,14 @@ const App: React.FC = () => {
     const p = fd.get('pass') as string;
 
     if (isRegisterMode) {
+      // SI NO HAY USUARIOS, EL PRIMERO ES ADMIN (LOCALMENTE)
+      const isFirstLocalUser = users.length === 0;
       const newUser: User = { 
         id: `USR-${Date.now().toString().slice(-4)}`, 
         username: u, 
         password: p, 
         name: u, 
-        role: 'agent' // Server will override if it's the first
+        role: isFirstLocalUser ? 'admin' : 'agent' 
       };
       
       let finalUser = newUser;
@@ -107,7 +109,6 @@ const App: React.FC = () => {
       }
     }
 
-    // Fallback local
     const found = users.find(x => x.username === u && x.password === p);
     if (found || (u === 'admin' && p === 'admin')) {
       setCurrentUser(found || { id: '1', name: 'Super Admin', username: 'admin', role: 'admin' });
@@ -124,7 +125,7 @@ const App: React.FC = () => {
           <div className="glass-card p-10 w-full max-w-md shadow-2xl border-orange-200">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-900 rounded-3xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-black">CD</div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v4.6</span></h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v4.7</span></h1>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Hospital Data Infrastructure</p>
             </div>
             <form onSubmit={handleAuth} className="space-y-4">
@@ -137,6 +138,13 @@ const App: React.FC = () => {
             <button onClick={() => setIsRegisterMode(!isRegisterMode)} className="w-full mt-6 text-[9px] font-black uppercase text-slate-400 tracking-widest hover:text-amber-500">
               {isRegisterMode ? 'Ya tengo cuenta - Volver' : '¿Nuevo Auditor? Crear Cuenta'}
             </button>
+            {users.length === 0 && !isOnline && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                <p className="text-[8px] font-black text-amber-700 uppercase leading-tight">
+                  ℹ️ El primer usuario registrado será asignado automáticamente como ADMINISTRADOR local para configurar el sistema.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       ) : (

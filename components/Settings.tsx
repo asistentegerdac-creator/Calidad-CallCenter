@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/apiService';
 import { User } from '../types';
@@ -42,22 +41,38 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
   const removeSpec = (idx: number) => setSpecialties(specialties.filter((_, i) => i !== idx));
 
   const handleMigration = async () => {
-    const localData = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-    if (localData.length === 0) return alert("No hay datos locales para migrar.");
-    if (!confirm(`Se enviarán ${localData.length} incidencias al servidor central. ¿Continuar?`)) return;
-    setSyncing(true);
-    let count = 0;
-    for (const c of localData) {
-      const ok = await dbService.saveComplaint(c);
-      if (ok) count++;
+    const localComplaints = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+    const localUsers = JSON.parse(localStorage.getItem('dac_users') || '[]');
+    
+    if (localComplaints.length === 0 && localUsers.length === 0) {
+      return alert("No hay datos locales para migrar.");
     }
+
+    if (!confirm(`Se migrarán ${localComplaints.length} incidencias y ${localUsers.length} usuarios al servidor. ¿Continuar?`)) return;
+    
+    setSyncing(true);
+    let cCount = 0;
+    let uCount = 0;
+
+    // Migrar Usuarios primero para mantener integridad
+    for (const u of localUsers) {
+      const ok = await dbService.saveUser(u);
+      if (ok) uCount++;
+    }
+
+    // Migrar Incidencias
+    for (const c of localComplaints) {
+      const ok = await dbService.saveComplaint(c);
+      if (ok) cCount++;
+    }
+    
     setSyncing(false);
-    alert(`Sincronización finalizada: ${count} de ${localData.length} registros subidos.`);
+    alert(`Sincronización finalizada:\n- ${uCount} Usuarios migrados\n- ${cCount} Incidencias migradas`);
+    loadUsers();
   };
 
   const handleClearTables = async () => {
     const pass = prompt("CONFIRMACIÓN DE SEGURIDAD: Ingrese la clave de administrador para LIMPIAR TABLAS:");
-    // In a real environment, this password check would be handled by the server
     if (pass === 'admin') {
       if (confirm("⚠️ ADVERTENCIA CRÍTICA: Se borrarán permanentemente todas las incidencias y estadísticas del servidor. Esta acción NO se puede deshacer. ¿Desea proceder?")) {
         const ok = await dbService.clearData();
@@ -128,7 +143,7 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
             
             <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row gap-4">
               <button onClick={handleMigration} disabled={syncing} className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg">
-                {syncing ? 'Subiendo datos...' : 'Migrar Registros Locales'}
+                {syncing ? 'Migrando datos locales...' : 'Migrar Todo al Servidor'}
               </button>
               <button onClick={handleClearTables} className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg">
                 🗑️ Limpiar Tablas de Pruebas
@@ -138,7 +153,6 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
         )}
       </div>
 
-      {/* GESTION DE USUARIOS */}
       <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl overflow-hidden">
         <div className="flex justify-between items-center mb-10">
           <div>
