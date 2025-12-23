@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Complaint, View, User, ComplaintStatus, DailyStat } from './types';
+import { Complaint, View, User, ComplaintStatus } from './types';
 import { Dashboard } from './components/Dashboard';
 import { ComplaintForm } from './components/ComplaintForm';
 import { Reports } from './components/Reports';
@@ -9,12 +9,13 @@ import { dbService } from './services/apiService';
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [isOnline, setIsOnline] = useState(false);
   const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
 
-  const [users] = useState<User[]>(() => JSON.parse(localStorage.getItem('dac_users') || '[]'));
+  const [users, setUsers] = useState<User[]>(() => JSON.parse(localStorage.getItem('dac_users') || '[]'));
   const [complaints, setComplaints] = useState<Complaint[]>(() => JSON.parse(localStorage.getItem('dac_complaints') || '[]'));
   const [areas, setAreas] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_areas') || '["Urgencias", "Triaje", "Laboratorio", "Rayos X", "Consultas", "Farmacia"]'));
   const [specialties, setSpecialties] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_specialties') || '["Medicina General", "Pediatría", "Ginecología", "Cardiología"]'));
@@ -25,27 +26,78 @@ const App: React.FC = () => {
   }, [areas, specialties]);
 
   useEffect(() => {
+    localStorage.setItem('dac_users', JSON.stringify(users));
+  }, [users]);
+
+  // Chequeo inicial de conexión y carga de datos desde Postgres si es posible
+  useEffect(() => {
     const init = async () => {
       const connected = await dbService.testConnection({});
       setIsOnline(connected);
       if (connected) {
-        const data = await dbService.fetchComplaints();
-        if (data.length > 0) setComplaints(data);
+        const [remoteComplaints, remoteUsers] = await Promise.all([
+          dbService.fetchComplaints(),
+          dbService.fetchUsers()
+        ]);
+        if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
+        if (remoteUsers.length > 0) setUsers(remoteUsers);
       }
     };
     init();
   }, []);
 
   const handleAddComplaint = async (c: Complaint) => {
+    const currentLocal = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+    localStorage.setItem('dac_complaints', JSON.stringify([c, ...currentLocal]));
     setComplaints(prev => [c, ...prev]);
-    if (isOnline) await dbService.saveComplaint(c);
-    setNotification({ msg: 'Incidencia Registrada', type: 'success' });
+    
+    let success = false;
+    if (isOnline) {
+      success = await dbService.saveComplaint(c);
+    }
+    
+    setNotification({ 
+      msg: success ? 'Incidencia Sincronizada con Postgres' : 'Registrada localmente (Offline)', 
+      type: success ? 'success' : 'error' 
+    });
     setTimeout(() => setNotification(null), 3000);
   };
 
   const handleUpdateComplaint = async (id: string, s: ComplaintStatus, r: string, auditor: string) => {
-    setComplaints(prev => prev.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: auditor} : c));
+    const updated = complaints.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: auditor} : c);
+    setComplaints(updated);
+    localStorage.setItem('dac_complaints', JSON.stringify(updated));
     if (isOnline) await dbService.updateComplaint(id, s, r, auditor);
+  };
+
+  const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const u = fd.get('user') as string;
+    const p = fd.get('pass') as string;
+
+    if (isRegisterMode) {
+      const newUser: User = { 
+        id: `USR-${Date.now().toString().slice(-4)}`, 
+        username: u, 
+        password: p, 
+        name: u, 
+        role: 'agent' 
+      };
+      setUsers(prev => [...prev, newUser]);
+      if (isOnline) await dbService.saveUser(newUser);
+      setCurrentUser(newUser);
+      setIsLoggedIn(true);
+      return;
+    }
+
+    const found = users.find(x => x.username === u && x.password === p);
+    if (found || (u === 'admin' && p === 'admin')) {
+      setCurrentUser(found || { id: '1', name: 'Super Admin', username: 'admin', role: 'admin' });
+      setIsLoggedIn(true);
+    } else {
+      alert('Error: Credenciales no válidas.');
+    }
   };
 
   if (!isLoggedIn) {
@@ -54,23 +106,19 @@ const App: React.FC = () => {
         <div className="glass-card p-10 w-full max-w-md shadow-2xl border-orange-200">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-slate-900 rounded-3xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-black">CD</div>
-            <h1 className="text-2xl font-black text-slate-900">CALIDAD DAC 4.0</h1>
-            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mt-2">Plataforma de Control Operativo</p>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v4.5</span></h1>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Hospital Data Infrastructure</p>
           </div>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            const fd = new FormData(e.currentTarget);
-            const u = fd.get('user') as string;
-            const p = fd.get('pass') as string;
-            if (u === 'admin' && p === 'admin') {
-              setCurrentUser({ id: '1', name: 'Admin DAC', username: 'admin', role: 'admin' });
-              setIsLoggedIn(true);
-            } else alert('Credenciales de prueba: admin / admin');
-          }} className="space-y-4">
-            <input name="user" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" placeholder="Usuario" />
-            <input name="pass" type="password" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" placeholder="Contraseña" />
-            <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-xs uppercase tracking-widest">Ingresar</button>
+          <form onSubmit={handleAuth} className="space-y-4">
+            <input name="user" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none focus:border-amber-400" placeholder="Nombre de Usuario" />
+            <input name="pass" type="password" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none focus:border-amber-400" placeholder="Contraseña Segura" />
+            <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">
+              {isRegisterMode ? 'Registrar Auditor' : 'Ingresar al Nodo'}
+            </button>
           </form>
+          <button onClick={() => setIsRegisterMode(!isRegisterMode)} className="w-full mt-6 text-[9px] font-black uppercase text-slate-400 tracking-widest hover:text-amber-500">
+            {isRegisterMode ? 'Ya tengo cuenta - Volver' : '¿Nuevo Auditor? Crear Cuenta'}
+          </button>
         </div>
       </div>
     );
@@ -78,11 +126,18 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#fffcf9]">
-      {/* Sidebar responsivo */}
       <aside className="w-full md:w-72 bg-white border-r border-orange-50 flex flex-col p-6 no-print h-auto md:h-screen sticky top-0 z-[100]">
         <div className="mb-10 flex items-center gap-4">
           <div className="w-10 h-10 bg-amber-500 rounded-2xl flex items-center justify-center text-white font-black text-lg">CD</div>
-          <h2 className="text-lg font-black text-slate-900">DAC <span className="text-amber-500">PRO</span></h2>
+          <div>
+            <h2 className="text-lg font-black text-slate-900 leading-none">DAC PRO</h2>
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
+              <span className={`text-[7px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {isOnline ? 'Conectado al Nodo' : 'Offline / Local'}
+              </span>
+            </div>
+          </div>
         </div>
         
         <nav className="flex-1 space-y-2">
@@ -91,8 +146,8 @@ const App: React.FC = () => {
             { id: 'incidences', label: 'Incidencias Reportadas', icon: '📑' },
             { id: 'new-incidence', label: 'Nueva Incidencia', icon: '➕' },
             { id: 'reports', label: 'Centro de Reportes', icon: '📋' },
-            { id: 'settings', label: 'Ajustes Nodo', icon: '⚙️' }
-          ].map((item) => (
+            { id: 'settings', label: 'Ajustes Nodo', icon: '⚙️', adminOnly: true }
+          ].filter(item => !item.adminOnly || currentUser?.role === 'admin').map((item) => (
             <button 
               key={item.id} 
               onClick={() => setActiveView(item.id as View)} 
@@ -105,13 +160,17 @@ const App: React.FC = () => {
         </nav>
         
         <div className="mt-8 pt-6 border-t border-orange-50">
-          <button onClick={() => setIsLoggedIn(false)} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-[10px] uppercase">Cerrar Sesión</button>
+          <div className="mb-4 text-center">
+            <p className="text-[9px] font-black text-slate-900 uppercase">{currentUser?.name}</p>
+            <p className="text-[7px] font-bold text-amber-600 uppercase">{currentUser?.role === 'admin' ? 'Administrador del Sistema' : 'Auditor de Campo'}</p>
+          </div>
+          <button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); }} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-100 transition-all">Cerrar Sesión</button>
         </div>
       </aside>
 
       <main className="flex-1 p-4 md:p-12 overflow-y-auto w-full">
         {notification && (
-          <div className="fixed top-4 right-4 z-[500] p-4 bg-emerald-500 text-white rounded-2xl shadow-2xl font-black text-[10px] uppercase tracking-widest animate-bounce">
+          <div className={`fixed top-4 right-4 z-[500] p-4 ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'} text-white rounded-2xl shadow-2xl font-black text-[10px] uppercase tracking-widest animate-in slide-in-from-top-4 duration-300`}>
             {notification.msg}
           </div>
         )}
@@ -121,7 +180,22 @@ const App: React.FC = () => {
           {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} isOnline={isOnline} />}
           {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
           {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
-          {activeView === 'settings' && <Settings areas={areas} setAreas={setAreas} specialties={specialties} setSpecialties={setSpecialties} onConnStatusChange={setIsOnline} />}
+          {activeView === 'settings' && (
+            <Settings 
+              areas={areas} 
+              setAreas={setAreas} 
+              specialties={specialties} 
+              setSpecialties={setSpecialties} 
+              isOnline={isOnline}
+              onConnStatusChange={async (s) => {
+                setIsOnline(s);
+                if (s) {
+                  const data = await dbService.fetchComplaints();
+                  setComplaints(data);
+                }
+              }} 
+            />
+          )}
         </div>
       </main>
     </div>

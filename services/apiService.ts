@@ -1,4 +1,4 @@
-import { Complaint, ComplaintStatus, DailyStat } from '../types';
+import { Complaint, ComplaintStatus, DailyStat, User } from '../types';
 
 const API_BASE = 'http://192.168.99.180:3008/api';
 
@@ -14,6 +14,37 @@ export const dbService = {
     } catch { return false; }
   },
 
+  // USUARIOS
+  async fetchUsers(): Promise<User[]> {
+    try {
+      const response = await fetch(`${API_BASE}/users`);
+      return response.ok ? await response.json() : [];
+    } catch { return []; }
+  },
+
+  async saveUser(user: User): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user)
+      });
+      return response.ok;
+    } catch { return false; }
+  },
+
+  async updateUserRole(id: string, role: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role })
+      });
+      return response.ok;
+    } catch { return false; }
+  },
+
+  // INCIDENCIAS
   async fetchComplaints(start?: string, end?: string): Promise<Complaint[]> {
     try {
       let url = `${API_BASE}/complaints`;
@@ -46,10 +77,19 @@ export const dbService = {
     } catch { return false; }
   },
 
+  // MANTENIMIENTO
+  async clearData(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/clear-data`, { method: 'DELETE' });
+      return response.ok;
+    } catch { return false; }
+  },
+
+  // ESTADISTICAS
   async fetchDailyStats(): Promise<DailyStat[]> {
     try {
       const response = await fetch(`${API_BASE}/daily-stats`);
-      return await response.json();
+      return response.ok ? await response.json() : [];
     } catch { return []; }
   },
 
