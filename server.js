@@ -60,7 +60,7 @@ app.post('/api/test-db', async (req, res) => {
       );
     `);
 
-    // Esquema de Estadísticas Diarias
+    // Esquema de Estadísticas
     await newPool.query(`
       CREATE TABLE IF NOT EXISTS daily_stats (
         stat_date DATE PRIMARY KEY,
@@ -76,7 +76,7 @@ app.post('/api/test-db', async (req, res) => {
   }
 });
 
-// ENDPOINTS DE USUARIOS
+// ENDPOINTS USUARIOS
 app.get('/api/users', ensurePool, async (req, res) => {
   try {
     const result = await pool.query('SELECT user_id as id, username, full_name as name, role FROM dac_users ORDER BY created_at DESC');
@@ -87,31 +87,21 @@ app.get('/api/users', ensurePool, async (req, res) => {
 app.post('/api/users', ensurePool, async (req, res) => {
   const u = req.body;
   try {
-    // Verificar si es el primer usuario
     const countRes = await pool.query('SELECT COUNT(*) FROM dac_users');
     const isFirstUser = parseInt(countRes.rows[0].count) === 0;
-    const finalRole = isFirstUser ? 'admin' : (u.role || 'agent');
+    // Si es el primero o ya viene como admin desde local, respetamos el privilegio
+    const finalRole = (isFirstUser || u.role === 'admin') ? 'admin' : 'agent';
 
     await pool.query(`
       INSERT INTO dac_users (user_id, username, password, full_name, role)
       VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (username) DO NOTHING
+      ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role
     `, [u.id, u.username, u.password, u.name, finalRole]);
     
     res.status(201).json({ role: finalRole });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/users/:id', ensurePool, async (req, res) => {
-  const { id } = req.params;
-  const { role } = req.body;
-  try {
-    await pool.query('UPDATE dac_users SET role = $1 WHERE user_id = $2', [role, id]);
-    res.sendStatus(200);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// LOGIN OFICIAL DESDE DB
 app.post('/api/login', ensurePool, async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -124,7 +114,16 @@ app.post('/api/login', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ENDPOINTS DE INCIDENCIAS
+app.put('/api/users/:id', ensurePool, async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+  try {
+    await pool.query('UPDATE dac_users SET role = $1 WHERE user_id = $2', [role, id]);
+    res.sendStatus(200);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ENDPOINTS INCIDENCIAS - CORRECCIÓN DE MAPEADO
 app.get('/api/complaints', ensurePool, async (req, res) => {
   const { start, end } = req.query;
   try {
@@ -136,14 +135,16 @@ app.get('/api/complaints', ensurePool, async (req, res) => {
     }
     query += ' ORDER BY registered_at DESC';
     const result = await pool.query(query, params);
-    res.json(result.rows.map(r => ({
+    
+    // Mapeo explícito para que el frontend reciba los campos correctos
+    const mapped = result.rows.map(r => ({
       id: r.audit_id,
       date: r.incidence_date ? new Date(r.incidence_date).toISOString().split('T')[0] : '',
       patientName: r.patient_name,
       patientPhone: r.patient_phone || '',
-      doctorName: r.doctor_name,
-      specialty: r.specialty_name,
-      area: r.area_name,
+      doctorName: r.doctor_name || '',
+      specialty: r.specialty_name || '',
+      area: r.area_name || '',
       description: r.complaint_description,
       status: r.current_status,
       priority: r.priority_level,
@@ -152,7 +153,8 @@ app.get('/api/complaints', ensurePool, async (req, res) => {
       suggestedResponse: r.ai_suggested_response,
       managementResponse: r.management_solution,
       resolvedBy: r.resolved_by_admin
-    })));
+    }));
+    res.json(mapped);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -166,25 +168,29 @@ app.post('/api/complaints', ensurePool, async (req, res) => {
       current_status = EXCLUDED.current_status,
       management_solution = EXCLUDED.management_solution,
       resolved_by_admin = EXCLUDED.resolved_by_admin`;
-    await pool.query(query, [c.id, c.date, c.patientName, c.patientPhone || null, c.doctorName || null, c.specialty, c.area, c.description, c.status, c.priority, c.satisfaction, c.sentiment, c.suggestedResponse]);
+    
+    await pool.query(query, [
+      c.id, 
+      c.date, 
+      c.patientName, 
+      c.patientPhone || null, 
+      c.doctorName || null, 
+      c.specialty || null, 
+      c.area || null, 
+      c.description, 
+      c.status, 
+      c.priority, 
+      c.satisfaction, 
+      c.sentiment || null, 
+      c.suggestedResponse || null
+    ]);
     res.sendStatus(201);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
-app.put('/api/complaints/:id', ensurePool, async (req, res) => {
-  const { id } = req.params;
-  const { status, managementResponse, resolvedBy } = req.body;
-  try {
-    await pool.query(`
-      UPDATE medical_incidences 
-      SET current_status = $1, management_solution = $2, resolved_by_admin = $3
-      WHERE audit_id = $4
-    `, [status, managementResponse, resolvedBy, id]);
-    res.sendStatus(200);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// LIMPIEZA DE TABLAS
 app.delete('/api/clear-data', ensurePool, async (req, res) => {
   try {
     await pool.query('TRUNCATE TABLE medical_incidences, daily_stats CASCADE');
@@ -194,11 +200,10 @@ app.delete('/api/clear-data', ensurePool, async (req, res) => {
 
 app.get('/api/daily-stats', ensurePool, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM daily_stats ORDER BY stat_date DESC LIMIT 30');
+    const result = await pool.query('SELECT stat_date as date, patients_attended, patients_called FROM daily_stats ORDER BY stat_date DESC LIMIT 30');
     res.json(result.rows.map(r => ({
-      date: r.stat_date ? new Date(r.stat_date).toISOString().split('T')[0] : '',
-      patients_attended: r.patients_attended,
-      patients_called: r.patients_called
+      ...r,
+      date: r.date ? new Date(r.date).toISOString().split('T')[0] : ''
     })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -217,4 +222,4 @@ app.post('/api/daily-stats', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend DAC v4.6 Enterprise en puerto 3008'));
+app.listen(3008, '0.0.0.0', () => console.log('🚀 Servidor DAC v4.8 Activo en 3008'));

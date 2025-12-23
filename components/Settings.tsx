@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/apiService';
-import { User } from '../types';
+import { User, Complaint } from '../types';
 
 interface Props {
   areas: string[];
@@ -37,8 +38,44 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
     loadUsers();
   }, [isOnline]);
 
-  const removeArea = (idx: number) => setAreas(areas.filter((_, i) => i !== idx));
-  const removeSpec = (idx: number) => setSpecialties(specialties.filter((_, i) => i !== idx));
+  const handleExportBackup = () => {
+    const backupData = {
+      complaints: JSON.parse(localStorage.getItem('dac_complaints') || '[]'),
+      users: JSON.parse(localStorage.getItem('dac_users') || '[]'),
+      areas,
+      specialties,
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backup_dac_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (confirm("¿Está seguro de importar este backup? Se sobrescribirán los datos locales actuales.")) {
+          if (data.complaints) localStorage.setItem('dac_complaints', JSON.stringify(data.complaints));
+          if (data.users) localStorage.setItem('dac_users', JSON.stringify(data.users));
+          if (data.areas) setAreas(data.areas);
+          if (data.specialties) setSpecialties(data.specialties);
+          alert("Backup importado con éxito. Refrescando sistema...");
+          window.location.reload();
+        }
+      } catch {
+        alert("Error al procesar el archivo de backup.");
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const handleMigration = async () => {
     const localComplaints = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
@@ -48,58 +85,56 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
       return alert("No hay datos locales para migrar.");
     }
 
-    if (!confirm(`Se migrarán ${localComplaints.length} incidencias y ${localUsers.length} usuarios al servidor. ¿Continuar?`)) return;
+    if (!confirm(`Se enviarán ${localComplaints.length} incidencias y ${localUsers.length} usuarios al servidor. ¿Continuar?`)) return;
     
     setSyncing(true);
     let cCount = 0;
     let uCount = 0;
 
-    // Migrar Usuarios primero para mantener integridad
-    for (const u of localUsers) {
-      const ok = await dbService.saveUser(u);
-      if (ok) uCount++;
-    }
+    try {
+      // Migrar Usuarios
+      for (const u of localUsers) {
+        const ok = await dbService.saveUser(u);
+        if (ok) uCount++;
+      }
 
-    // Migrar Incidencias
-    for (const c of localComplaints) {
-      const ok = await dbService.saveComplaint(c);
-      if (ok) cCount++;
+      // Migrar Incidencias
+      for (const c of localComplaints) {
+        const ok = await dbService.saveComplaint(c);
+        if (ok) cCount++;
+      }
+      
+      alert(`Sincronización Exitosa:\n- ${uCount} Usuarios\n- ${cCount} Incidencias`);
+      loadUsers();
+    } catch (err) {
+      alert("Error durante la migración: " + err);
+    } finally {
+      setSyncing(false);
     }
-    
-    setSyncing(false);
-    alert(`Sincronización finalizada:\n- ${uCount} Usuarios migrados\n- ${cCount} Incidencias migradas`);
-    loadUsers();
   };
 
   const handleClearTables = async () => {
-    const pass = prompt("CONFIRMACIÓN DE SEGURIDAD: Ingrese la clave de administrador para LIMPIAR TABLAS:");
+    const pass = prompt("SEGURIDAD: Ingrese clave de administrador para LIMPIAR TABLAS:");
     if (pass === 'admin') {
-      if (confirm("⚠️ ADVERTENCIA CRÍTICA: Se borrarán permanentemente todas las incidencias y estadísticas del servidor. Esta acción NO se puede deshacer. ¿Desea proceder?")) {
+      if (confirm("⚠️ ADVERTENCIA: Se borrarán todos los datos del servidor para producción. ¿Proceder?")) {
         const ok = await dbService.clearData();
         if (ok) {
-          alert("Limpieza completada. El sistema se refrescará.");
+          alert("Base de datos limpia.");
           window.location.reload();
         } else {
-          alert("Error de servidor al intentar limpiar datos.");
+          alert("Error al limpiar servidor.");
         }
       }
     } else {
-      alert("Clave de administrador incorrecta. Acceso denegado.");
+      alert("Clave incorrecta.");
     }
   };
 
   const toggleUserRole = async (user: User) => {
     const newRole = user.role === 'admin' ? 'agent' : 'admin';
-    const msg = `¿Desea cambiar el rol de ${user.username} a ${newRole === 'admin' ? 'Administrador (Acceso total)' : 'Auditor Común (Sin acceso a ajustes)'}?`;
-    
-    if (!confirm(msg)) return;
-    
+    if (!confirm(`¿Cambiar rol de ${user.username} a ${newRole}?`)) return;
     const ok = await dbService.updateUserRole(user.id, newRole);
-    if (ok) {
-      setDbUsers(dbUsers.map(u => u.id === user.id ? {...u, role: newRole as any} : u));
-    } else {
-      alert("Error al actualizar el rol en el servidor.");
-    }
+    if (ok) loadUsers();
   };
 
   return (
@@ -108,44 +143,35 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
         <div className="flex justify-between items-start mb-6">
           <div>
             <h3 className="text-xl font-black mb-2 flex items-center gap-3">
-              <span className="text-2xl">🐘</span> Nodo Central de Datos
+              <span className="text-2xl">🐘</span> Configuración del Nodo Central
             </h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">PostgreSQL Server & Maintenance</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PostgreSQL Server & Production Tools</p>
           </div>
           {!isUnlocked && (
-            <button onClick={() => setIsUnlocked(true)} className="px-8 py-4 bg-amber-500 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-white hover:text-amber-500 transition-all">Configurar Servidor</button>
+            <button onClick={() => setIsUnlocked(true)} className="px-8 py-4 bg-amber-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-amber-500 transition-all">Configurar Servidor</button>
           )}
         </div>
 
         {isUnlocked && (
           <div className="animate-in slide-in-from-top-4 duration-300 space-y-8 mt-10">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-1">
-                 <label className="text-[8px] font-black text-slate-500 uppercase">Host</label>
-                 <input className="w-full bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} />
-              </div>
-              <div className="space-y-1">
-                 <label className="text-[8px] font-black text-slate-500 uppercase">Puerto</label>
-                 <input className="w-full bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" value={dbParams.port} onChange={e => setDbParams({...dbParams, port: e.target.value})} />
-              </div>
-              <div className="space-y-1">
-                 <label className="text-[8px] font-black text-slate-500 uppercase">DB Name</label>
-                 <input className="w-full bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} />
-              </div>
+              <input className="bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" placeholder="Host IP" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} />
+              <input className="bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" placeholder="Port" value={dbParams.port} onChange={e => setDbParams({...dbParams, port: e.target.value})} />
+              <input className="bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" placeholder="Database" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} />
               <input className="bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" placeholder="User" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} />
               <input className="bg-white/10 p-4 rounded-xl text-sm font-bold outline-none" type="password" placeholder="Pass" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} />
               <button onClick={async () => {
                 const ok = await dbService.testConnection(dbParams);
                 onConnStatusChange(ok);
-                alert(ok ? '✅ Nodo vinculado correctamente' : '❌ Error de vinculación');
-              }} className="bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl">Vincular Nodo</button>
+                alert(ok ? '✅ Conexión establecida' : '❌ Error de conexión');
+              }} className="bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest">Vincular Nodo</button>
             </div>
             
             <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row gap-4">
-              <button onClick={handleMigration} disabled={syncing} className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg">
-                {syncing ? 'Migrando datos locales...' : 'Migrar Todo al Servidor'}
+              <button onClick={handleMigration} disabled={syncing} className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">
+                {syncing ? 'Sincronizando...' : 'Migrar Todo al Servidor'}
               </button>
-              <button onClick={handleClearTables} className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg">
+              <button onClick={handleClearTables} className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">
                 🗑️ Limpiar Tablas de Pruebas
               </button>
             </div>
@@ -153,55 +179,38 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
         )}
       </div>
 
-      <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl overflow-hidden">
-        <div className="flex justify-between items-center mb-10">
-          <div>
-            <h3 className="text-xl font-black flex items-center gap-4 text-slate-900 uppercase">👥 Gestión de Auditores</h3>
-            <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Control de accesos y roles del sistema</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
+          <h3 className="text-xl font-black mb-6 text-slate-900 uppercase">💾 Copia de Seguridad</h3>
+          <p className="text-xs text-slate-400 mb-8 font-medium">Exporta o importa toda la información local en formato JSON.</p>
+          <div className="flex flex-col gap-4">
+            <button onClick={handleExportBackup} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">Generar Backup JSON</button>
+            <div className="relative">
+              <input type="file" accept=".json" onChange={handleImportBackup} className="absolute inset-0 opacity-0 cursor-pointer" />
+              <button className="w-full py-4 bg-amber-50 text-amber-600 border border-amber-200 rounded-2xl font-black text-[10px] uppercase tracking-widest">Importar Backup JSON</button>
+            </div>
           </div>
-          <button onClick={loadUsers} className="text-[9px] font-black text-amber-500 uppercase border border-amber-200 px-4 py-2 rounded-xl hover:bg-amber-50 transition-all">Refrescar Lista</button>
         </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
-                <th className="px-6 py-5">Nombre de Usuario</th>
-                <th className="px-6 py-5">Identificador</th>
-                <th className="px-6 py-5">Rol del Sistema</th>
-                <th className="px-6 py-5 text-center">Acciones de Gestión</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {dbUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-10 text-center text-slate-300 font-black uppercase text-[10px]">Sin usuarios registrados en el nodo</td>
-                </tr>
-              ) : dbUsers.map(user => (
-                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-5">
-                    <p className="font-black text-slate-900 text-sm">{user.username}</p>
-                  </td>
-                  <td className="px-6 py-5">
-                    <p className="text-[9px] text-slate-400 font-bold uppercase">{user.id}</p>
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${user.role === 'admin' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                      {user.role === 'admin' ? 'Administrador' : 'Auditor Común'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5 text-center">
-                    <button 
-                      onClick={() => toggleUserRole(user)} 
-                      className={`px-6 py-2 rounded-xl text-[9px] font-black uppercase transition-all shadow-sm ${user.role === 'admin' ? 'bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-600' : 'bg-slate-900 text-white hover:bg-amber-500'}`}
-                    >
-                      {user.role === 'admin' ? 'Quitar Admin' : 'Hacer Admin'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
+          <h3 className="text-xl font-black mb-6 text-slate-900 uppercase">👥 Auditores en Nodo</h3>
+          <div className="overflow-x-auto max-h-[250px] scrollbar-hide">
+            <table className="w-full text-left">
+              <tbody className="divide-y divide-slate-100">
+                {dbUsers.map(user => (
+                  <tr key={user.id}>
+                    <td className="py-4">
+                      <p className="font-black text-slate-900 text-sm">{user.username}</p>
+                      <span className={`text-[8px] font-black uppercase ${user.role === 'admin' ? 'text-amber-500' : 'text-slate-400'}`}>{user.role}</span>
+                    </td>
+                    <td className="py-4 text-right">
+                      <button onClick={() => toggleUserRole(user)} className="px-3 py-1 bg-slate-100 rounded-lg text-[8px] font-black uppercase hover:bg-amber-100">Rol</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -209,14 +218,14 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
         <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
           <h3 className="text-xl font-black mb-8 flex items-center gap-4 text-slate-900 uppercase">🏢 Áreas</h3>
           <div className="flex gap-4 mb-8">
-            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none focus:border-amber-400" value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="Añadir nueva área..." />
-            <button onClick={() => { if(newArea) { setAreas([...areas, newArea]); setNewArea(''); } }} className="w-14 h-14 bg-amber-500 text-white rounded-2xl font-black text-2xl shadow-lg hover:scale-105 transition-all">+</button>
+            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="Ej. Odontología" />
+            <button onClick={() => { if(newArea) { setAreas([...areas, newArea]); setNewArea(''); } }} className="w-14 h-14 bg-amber-500 text-white rounded-2xl font-black text-2xl shadow-lg">+</button>
           </div>
           <div className="flex flex-wrap gap-2">
             {areas.map((a, i) => (
               <span key={i} className="px-4 py-2 bg-slate-50 text-slate-700 rounded-xl text-[9px] font-black border border-slate-100 flex items-center gap-3">
                 {a.toUpperCase()}
-                <button onClick={() => removeArea(i)} className="text-rose-500 hover:bg-rose-50 w-5 h-5 rounded-full flex items-center justify-center">✕</button>
+                <button onClick={() => setAreas(areas.filter((_, idx) => idx !== i))} className="text-rose-500">✕</button>
               </span>
             ))}
           </div>
@@ -225,14 +234,14 @@ export const Settings: React.FC<Props> = ({ areas, setAreas, specialties, setSpe
         <div className="glass-card bg-white p-10 border border-orange-100 shadow-xl">
           <h3 className="text-xl font-black mb-8 flex items-center gap-4 text-slate-900 uppercase">🎓 Especialidades</h3>
           <div className="flex gap-4 mb-8">
-            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none focus:border-amber-400" value={newSpec} onChange={e => setNewSpec(e.target.value)} placeholder="Añadir especialidad..." />
-            <button onClick={() => { if(newSpec) { setSpecialties([...specialties, newSpec]); setNewSpec(''); } }} className="w-14 h-14 bg-orange-500 text-white rounded-2xl font-black text-2xl shadow-lg hover:scale-105 transition-all">+</button>
+            <input className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" value={newSpec} onChange={e => setNewSpec(e.target.value)} placeholder="Ej. Pediatría" />
+            <button onClick={() => { if(newSpec) { setSpecialties([...specialties, newSpec]); setNewSpec(''); } }} className="w-14 h-14 bg-orange-500 text-white rounded-2xl font-black text-2xl shadow-lg">+</button>
           </div>
           <div className="flex flex-wrap gap-2">
             {specialties.map((s, i) => (
               <span key={i} className="px-4 py-2 bg-slate-50 text-slate-700 rounded-xl text-[9px] font-black border border-slate-100 flex items-center gap-3">
                 {s.toUpperCase()}
-                <button onClick={() => removeSpec(i)} className="text-rose-500 hover:bg-rose-50 w-5 h-5 rounded-full flex items-center justify-center">✕</button>
+                <button onClick={() => setSpecialties(specialties.filter((_, idx) => idx !== i))} className="text-rose-500">✕</button>
               </span>
             ))}
           </div>
