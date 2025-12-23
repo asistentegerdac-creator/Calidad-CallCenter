@@ -10,10 +10,10 @@ import { dbService } from './services/apiService';
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [isOnline, setIsOnline] = useState(false);
+  const [dbStatusMsg, setDbStatusMsg] = useState('Verificando...');
   const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
   const [currentTheme, setCurrentTheme] = useState<string>(() => localStorage.getItem('dac_theme') || 'classic');
 
@@ -23,80 +23,48 @@ const App: React.FC = () => {
   const [specialties, setSpecialties] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_specialties') || '["Medicina General", "Pediatría", "Ginecología", "Cardiología"]'));
 
   useEffect(() => {
-    // Aplicar tema al body
     document.body.className = currentTheme === 'classic' ? '' : `theme-${currentTheme}`;
     localStorage.setItem('dac_theme', currentTheme);
   }, [currentTheme]);
 
+  // Monitoreo constante de salud del Nodo
   useEffect(() => {
-    localStorage.setItem('dac_areas', JSON.stringify(areas));
-    localStorage.setItem('dac_specialties', JSON.stringify(specialties));
-  }, [areas, specialties]);
-
-  useEffect(() => {
-    localStorage.setItem('dac_users', JSON.stringify(users));
-  }, [users]);
-
-  const autoSync = useCallback(async () => {
-    const localComplaints = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-    const localUsers = JSON.parse(localStorage.getItem('dac_users') || '[]');
-    
-    if (localComplaints.length === 0 && localUsers.length === 0) {
-      const remoteUsers = await dbService.fetchUsers();
-      if (remoteUsers.length > 0) setUsers(remoteUsers);
-      const remoteComplaints = await dbService.fetchComplaints();
-      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
-      return;
-    }
-
-    setNotification({ msg: 'Sincronizando con Nodo Central...', type: 'success' });
-    
-    try {
-      for (const u of localUsers) {
-        await dbService.saveUser(u);
-      }
-      for (const c of localComplaints) {
-        await dbService.saveComplaint(c);
-      }
-      localStorage.setItem('dac_complaints', '[]');
-      const remoteUsers = await dbService.fetchUsers();
-      const remoteComplaints = await dbService.fetchComplaints();
-      if (remoteUsers.length > 0) setUsers(remoteUsers);
-      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
-      setNotification({ msg: 'Sincronización Completada', type: 'success' });
-    } catch (e) {
-      setNotification({ msg: 'Nodo Central no respondió correctamente', type: 'error' });
-    }
-    setTimeout(() => setNotification(null), 3000);
+    const checkHealth = async () => {
+      const health = await dbService.checkHealth();
+      setIsOnline(health.connected);
+      setDbStatusMsg(health.connected ? 'Nodo Activo' : (health.message || 'Sin Conexión'));
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 10000); // Cada 10 seg
+    return () => clearInterval(interval);
   }, []);
 
+  const autoSync = useCallback(async () => {
+    if (!isOnline) return;
+    try {
+      const remoteUsers = await dbService.fetchUsers();
+      if (remoteUsers.length > 0) setUsers(remoteUsers);
+      const remoteComplaints = await dbService.fetchComplaints();
+      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
+    } catch (e) {
+      console.error("Error en autoSync");
+    }
+  }, [isOnline]);
+
   useEffect(() => {
-    const init = async () => {
-      const connected = await dbService.testConnection({});
-      setIsOnline(connected);
-      if (connected) {
-        await autoSync();
-      }
-    };
-    init();
-  }, [autoSync]);
+    if (isOnline) autoSync();
+  }, [isOnline, autoSync]);
 
   const handleAddComplaint = async (c: Complaint) => {
     setComplaints(prev => [c, ...prev]);
-    const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-    localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
-
     if (isOnline) {
       const success = await dbService.saveComplaint(c);
-      if (success) {
-        const remainingLocal = JSON.parse(localStorage.getItem('dac_complaints') || '[]').filter((x: Complaint) => x.id !== c.id);
-        localStorage.setItem('dac_complaints', JSON.stringify(remainingLocal));
-        setNotification({ msg: 'Incidencia Sincronizada', type: 'success' });
-      } else {
-        setNotification({ msg: 'Error de Red - Pendiente de Envío', type: 'error' });
-      }
+      if (success) setNotification({ msg: 'Incidencia Sincronizada', type: 'success' });
+      else setNotification({ msg: 'Fallo al sincronizar con Postgres', type: 'error' });
     } else {
-      setNotification({ msg: 'Guardado Local (Modo Offline)', type: 'success' });
+      const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+      localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
+      setNotification({ msg: 'Guardado Local (Pendiente)', type: 'success' });
     }
     setTimeout(() => setNotification(null), 3000);
   };
@@ -104,11 +72,7 @@ const App: React.FC = () => {
   const handleUpdateComplaint = async (id: string, s: ComplaintStatus, r: string, auditor: string) => {
     const updated = complaints.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: auditor} : c);
     setComplaints(updated);
-    if (isOnline) {
-      await dbService.updateComplaint(id, s, r, auditor);
-    } else {
-      localStorage.setItem('dac_local_updates', JSON.stringify(updated));
-    }
+    if (isOnline) await dbService.updateComplaint(id, s, r, auditor);
   };
 
   const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -117,154 +81,90 @@ const App: React.FC = () => {
     const u = fd.get('user') as string;
     const p = fd.get('pass') as string;
 
-    if (isRegisterMode) {
-      const isFirst = users.length === 0;
-      const newUser: User = { 
-        id: `USR-${Date.now().toString().slice(-4)}`, 
-        username: u, 
-        password: p, 
-        name: u, 
-        role: isFirst ? 'admin' : 'agent',
-        permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
-      };
-      
-      if (isOnline) {
-        const saved = await dbService.saveUser(newUser);
-        if (saved) {
-          setUsers(prev => [...prev, saved]);
-          setCurrentUser(saved);
-        } else {
-          setUsers(prev => [...prev, newUser]);
-          setCurrentUser(newUser);
-        }
-      } else {
-        setUsers(prev => [...prev, newUser]);
-        setCurrentUser(newUser);
-      }
-      setIsLoggedIn(true);
-      return;
-    }
-
     if (isOnline) {
       const userFromDb = await dbService.login(u, p);
       if (userFromDb) {
-        setCurrentUser({
-          ...userFromDb,
-          permissions: userFromDb.permissions || ['dashboard', 'settings']
-        });
+        setCurrentUser(userFromDb);
         setIsLoggedIn(true);
         return;
       }
     }
 
-    const found = users.find(x => x.username === u && x.password === p);
-    if (found || (u === 'admin' && p === 'admin')) {
-      const userToLogin = found || { 
-        id: '1', name: 'Super Admin', username: 'admin', role: 'admin' as const,
-        permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
-      };
-      setCurrentUser(userToLogin);
+    // Fallback local solo si es admin
+    if (u === 'admin' && p === 'admin') {
+      setCurrentUser({ id: '1', name: 'Master Admin', username: 'admin', role: 'admin', permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings'] });
       setIsLoggedIn(true);
     } else {
-      alert('Acceso denegado: Usuario o contraseña incorrectos.');
+      alert('Error de acceso. Verifique su conexión al Nodo Central.');
     }
   };
 
-  const hasPermission = (view: View) => {
-    if (!currentUser) return false;
-    if (view === 'settings') return true;
-    return currentUser.permissions.includes(view);
-  };
-
   return (
-    <div className={`min-h-screen flex flex-col md:flex-row transition-all duration-500`}>
+    <div className="min-h-screen flex flex-col md:flex-row transition-all duration-500">
       {!isLoggedIn ? (
         <div className="min-h-screen w-full flex items-center justify-center p-4">
-          <div className="glass-card p-10 w-full max-w-md shadow-2xl border-orange-200">
+          <div className="glass-card p-10 w-full max-w-md shadow-2xl">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-900 rounded-3xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-black">CD</div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v5.3</span></h1>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Gestión de Seguridad y Calidad Médica</p>
+              <h1 className="text-2xl font-black tracking-tighter uppercase">CALIDAD DAC <span className="text-amber-500">v6.0</span></h1>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                <p className="text-[10px] font-black uppercase text-slate-400">{dbStatusMsg}</p>
+              </div>
             </div>
             <form onSubmit={handleAuth} className="space-y-4">
-              <input name="user" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none" placeholder="Usuario" />
-              <input name="pass" type="password" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none" placeholder="Contraseña" />
-              <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest">
-                {isRegisterMode ? 'Crear Cuenta Maestra' : 'Entrar al Sistema'}
-              </button>
+              <input name="user" required className="w-full p-4 rounded-2xl font-bold outline-none" placeholder="Auditor" />
+              <input name="pass" type="password" required className="w-full p-4 rounded-2xl font-bold outline-none" placeholder="Password" />
+              <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest">Acceder al Nodo</button>
             </form>
-            <button onClick={() => setIsRegisterMode(!isRegisterMode)} className="w-full mt-6 text-[9px] font-black uppercase text-slate-400 tracking-widest hover:text-amber-500">
-              {isRegisterMode ? 'Regresar al Login' : '¿Nuevo Auditor? Registro Local'}
-            </button>
           </div>
         </div>
       ) : (
         <>
-          <aside className="w-full md:w-72 border-r border-orange-50 flex flex-col p-6 no-print h-auto md:h-screen sticky top-0 z-[100] transition-colors duration-500">
+          <aside className="w-full md:w-72 border-r flex flex-col p-6 no-print h-auto md:h-screen sticky top-0 z-[100]">
             <div className="mb-10 flex items-center gap-4">
               <div className="w-10 h-10 bg-amber-500 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg">CD</div>
               <div>
-                <h2 className="text-lg font-black text-slate-900 leading-none tracking-tighter">DAC PRO</h2>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
-                  <span className={`text-[7px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {isOnline ? 'Sincronizado' : 'Modo Offline'}
-                  </span>
-                </div>
+                <h2 className="text-lg font-black leading-none">DAC PRO</h2>
+                <span className={`text-[7px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-500' : 'text-rose-500'}`}>{dbStatusMsg}</span>
               </div>
             </div>
-            
             <nav className="flex-1 space-y-2">
               {[
-                { id: 'dashboard', label: 'Monitor Calidad', icon: '📈' },
-                { id: 'incidences', label: 'Gestión de Casos', icon: '📑' },
-                { id: 'new-incidence', label: 'Nuevo Reporte', icon: '➕' },
-                { id: 'reports', label: 'Centro de Datos', icon: '📋' },
-                { id: 'settings', label: 'Ajustes Nodo', icon: '⚙️' }
-              ].filter(item => hasPermission(item.id as View)).map((item) => (
-                <button key={item.id} onClick={() => setActiveView(item.id as View)} className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all duration-300 ${activeView === item.id ? 'sidebar-item-active' : 'text-slate-400 hover:bg-orange-50/50'}`}>
-                  <span className="text-lg">{item.icon}</span>
-                  {item.label}
+                { id: 'dashboard', label: 'Dashboard', icon: '📈' },
+                { id: 'incidences', label: 'Auditoría', icon: '📑' },
+                { id: 'new-incidence', label: 'Reportar', icon: '➕' },
+                { id: 'reports', label: 'Datos', icon: '📋' },
+                { id: 'settings', label: 'Nodo', icon: '⚙️' }
+              ].map((item) => (
+                <button key={item.id} onClick={() => setActiveView(item.id as View)} className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest ${activeView === item.id ? 'sidebar-item-active' : 'text-slate-400'}`}>
+                  <span className="text-lg">{item.icon}</span>{item.label}
                 </button>
               ))}
             </nav>
-            
-            <div className="mt-8 pt-6 border-t border-orange-50">
-              <div className="mb-4 text-center">
-                <p className="text-[9px] font-black text-slate-900 uppercase">{currentUser?.name}</p>
-                <p className="text-[7px] font-bold text-amber-600 uppercase tracking-widest">{currentUser?.role === 'admin' ? 'Super Administrador' : 'Auditor'}</p>
-              </div>
-              <button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); }} className="w-full py-3 bg-rose-50/50 text-rose-600 rounded-2xl font-black text-[10px] uppercase hover:bg-rose-100/50 transition-all">Cerrar Sesión</button>
+            <div className="mt-8 pt-6 border-t">
+              <p className="text-[9px] font-black text-center uppercase">{currentUser?.name}</p>
+              <button onClick={() => setIsLoggedIn(false)} className="w-full mt-4 py-3 bg-rose-50/50 text-rose-600 rounded-2xl font-black text-[10px] uppercase">Salir</button>
             </div>
           </aside>
-
-          <main className="flex-1 p-4 md:p-12 overflow-y-auto w-full transition-all duration-500">
+          <main className="flex-1 p-4 md:p-12 overflow-y-auto">
             {notification && (
-              <div className={`fixed top-4 right-4 z-[500] p-4 ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'} text-white rounded-2xl shadow-2xl font-black text-[10px] uppercase animate-in slide-in-from-top-4 duration-300`}>
+              <div className={`fixed top-4 right-4 z-[500] p-4 ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'} text-white rounded-2xl shadow-2xl font-black text-[10px] uppercase animate-bounce`}>
                 {notification.msg}
               </div>
             )}
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
-              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} isOnline={isOnline} />}
-              {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
-              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
-              {activeView === 'settings' && (
-                <Settings 
-                  areas={areas} setAreas={setAreas} 
-                  specialties={specialties} setSpecialties={setSpecialties}
-                  users={users} setUsers={setUsers}
-                  currentUser={currentUser}
-                  isOnline={isOnline} 
-                  onConnStatusChange={async (s) => {
-                    setIsOnline(s);
-                    if (s) await autoSync();
-                  }}
-                  currentTheme={currentTheme}
-                  setTheme={setCurrentTheme}
-                />
-              )}
-            </div>
+            {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
+            {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} isOnline={isOnline} />}
+            {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
+            {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
+            {activeView === 'settings' && (
+              <Settings 
+                areas={areas} setAreas={setAreas} specialties={specialties} setSpecialties={setSpecialties}
+                users={users} setUsers={setUsers} currentUser={currentUser}
+                isOnline={isOnline} onConnStatusChange={setIsOnline}
+                currentTheme={currentTheme} setTheme={setCurrentTheme}
+              />
+            )}
           </main>
         </>
       )}

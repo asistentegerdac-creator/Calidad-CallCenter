@@ -2,14 +2,18 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+const CONFIG_PATH = path.join(__dirname, 'db_config.json');
 let pool = null;
+let currentConfig = null;
 
-// Función para inicializar tablas - Asegura que los tipos de datos coincidan con el Front
+// Función para inicializar tablas
 const createTables = async (targetPool) => {
   try {
     await targetPool.query(`
@@ -52,109 +56,135 @@ const createTables = async (targetPool) => {
         patients_called INTEGER DEFAULT 0
       );
     `);
-    console.log("✅ Estructura de base de datos PostgreSQL validada.");
+    console.log("✅ Tablas sincronizadas.");
   } catch (err) {
-    console.error("❌ Error fatal de estructura SQL:", err);
+    console.error("❌ Error SQL al crear tablas:", err.message);
     throw err;
   }
 };
 
-// Middleware para verificar que la conexión a la DB esté viva
-const ensurePool = (req, res, next) => {
-  if (!pool) {
-    console.warn("⚠️ Pool no detectado. Solicitando re-inicialización al cliente.");
-    return res.status(503).json({ error: 'NODE_NOT_INITIALIZED' });
+// Cargar configuración persistente al iniciar
+const loadConfigAndConnect = async () => {
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      console.log("📂 Cargando configuración persistente de DB...");
+      const newPool = new Pool({
+        ...config,
+        connectionTimeoutMillis: 5000,
+      });
+      await newPool.query('SELECT 1');
+      await createTables(newPool);
+      pool = newPool;
+      currentConfig = config;
+      console.log("🚀 Reconectado automáticamente a PostgreSQL.");
+    } catch (err) {
+      console.error("⚠️ No se pudo reconectar automáticamente:", err.message);
+    }
   }
-  next();
 };
 
-// Endpoint de vinculación
+loadConfigAndConnect();
+
+// Middleware de verificación de conexión real
+const ensureDbConnection = async (req, res, next) => {
+  if (!pool) {
+    return res.status(503).json({ error: 'DB_NOT_CONFIGURED', message: 'La base de datos no ha sido configurada.' });
+  }
+  try {
+    await pool.query('SELECT 1');
+    next();
+  } catch (err) {
+    console.error("❌ Conexión a DB perdida durante la petición:", err.message);
+    return res.status(503).json({ error: 'DB_CONNECTION_LOST', message: 'Se perdió la conexión con PostgreSQL.' });
+  }
+};
+
+// Endpoint de prueba y configuración
 app.post('/api/test-db', async (req, res) => {
   const config = req.body;
-  console.log("🔗 Intentando vincular Nodo:", config.host);
   try {
-    const newPool = new Pool({
-      user: config.user || 'postgres',
-      host: config.host || 'localhost',
-      database: config.database || 'calidad_dac_db',
-      password: config.password || '',
+    const testPool = new Pool({
+      user: config.user,
+      host: config.host,
+      database: config.database,
+      password: config.password,
       port: config.port || 5432,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
     });
     
-    await newPool.query('SELECT NOW()');
-    await createTables(newPool);
+    await testPool.query('SELECT 1');
+    await createTables(testPool);
     
-    pool = newPool;
-    console.log("🚀 Nodo vinculado y Tablas listas.");
+    // Si la prueba es exitosa, persistir y activar
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    if (pool) await pool.end();
+    pool = testPool;
+    currentConfig = config;
+    
+    console.log("✅ Nueva configuración guardada y activada.");
     res.status(200).json({ status: 'connected' });
   } catch (err) {
-    console.error("❌ Error en vinculación:", err.message);
+    console.error("❌ Fallo en test de conexión:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/repair-db', ensurePool, async (req, res) => {
+// Endpoint de estado de salud (Ping Real)
+app.get('/api/health', async (req, res) => {
+  if (!pool) return res.json({ connected: false, message: 'No configurado' });
   try {
-    await createTables(pool);
-    res.status(200).json({ status: 'repaired' });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// GESTIÓN DE USUARIOS - Corrección de permisos y guardado
-app.get('/api/users', ensurePool, async (req, res) => {
-  try {
-    const result = await pool.query('SELECT user_id as id, username, full_name as name, role, permissions FROM dac_users');
-    res.json(result.rows.map(r => ({
-      ...r,
-      permissions: r.permissions ? r.permissions.split(',') : ['dashboard']
-    })));
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/users', ensurePool, async (req, res) => {
-  const u = req.body;
-  console.log("👤 Grabando usuario en Postgres:", u.username);
-  try {
-    const permissionsStr = Array.isArray(u.permissions) ? u.permissions.join(',') : 'dashboard';
-    const result = await pool.query(`
-      INSERT INTO dac_users (user_id, username, password, full_name, role, permissions)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      ON CONFLICT (username) DO UPDATE SET 
-        role = EXCLUDED.role, 
-        permissions = EXCLUDED.permissions,
-        password = EXCLUDED.password
-      RETURNING user_id as id, username, role, permissions
-    `, [u.id, u.username, u.password, u.name || u.username, u.role, permissionsStr]);
-    
-    const saved = result.rows[0];
-    saved.permissions = saved.permissions.split(',');
-    res.status(201).json(saved);
-  } catch (err) { 
-    console.error("❌ Error SQL Usuarios:", err.message);
-    res.status(500).json({ error: err.message }); 
+    await pool.query('SELECT 1');
+    res.json({ connected: true, database: currentConfig.database });
+  } catch (err) {
+    res.json({ connected: false, message: err.message });
   }
 });
 
-app.post('/api/login', ensurePool, async (req, res) => {
+app.post('/api/repair-db', ensureDbConnection, async (req, res) => {
+  try {
+    await createTables(pool);
+    res.json({ status: 'repaired' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// USUARIOS
+app.get('/api/users', ensureDbConnection, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT user_id as id, username, full_name as name, role, permissions FROM dac_users');
+    res.json(result.rows.map(r => ({ ...r, permissions: r.permissions ? r.permissions.split(',') : [] })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/users', ensureDbConnection, async (req, res) => {
+  const u = req.body;
+  try {
+    const perms = Array.isArray(u.permissions) ? u.permissions.join(',') : 'dashboard';
+    const result = await pool.query(`
+      INSERT INTO dac_users (user_id, username, password, full_name, role, permissions)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role, permissions = EXCLUDED.permissions
+      RETURNING user_id as id, username, role, permissions
+    `, [u.id, u.username, u.password, u.name, u.role, perms]);
+    const saved = result.rows[0];
+    saved.permissions = saved.permissions.split(',');
+    res.status(201).json(saved);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/login', ensureDbConnection, async (req, res) => {
   const { username, password } = req.body;
   try {
     const result = await pool.query('SELECT * FROM dac_users WHERE username = $1 AND password = $2', [username, password]);
     if (result.rows.length > 0) {
       const user = result.rows[0];
-      res.json({
-        id: user.user_id,
-        username: user.username,
-        name: user.full_name,
-        role: user.role,
-        permissions: user.permissions ? user.permissions.split(',') : ['dashboard']
-      });
-    } else { res.status(401).json({ error: 'Invalido' }); }
+      res.json({ id: user.user_id, username: user.username, name: user.full_name, role: user.role, permissions: user.permissions ? user.permissions.split(',') : [] });
+    } else { res.status(401).json({ error: 'Credenciales inválidas' }); }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // INCIDENCIAS
-app.get('/api/complaints', ensurePool, async (req, res) => {
+app.get('/api/complaints', ensureDbConnection, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM medical_incidences ORDER BY registered_at DESC');
     res.json(result.rows.map(r => ({
@@ -177,40 +207,37 @@ app.get('/api/complaints', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/complaints', ensurePool, async (req, res) => {
+app.post('/api/complaints', ensureDbConnection, async (req, res) => {
   const c = req.body;
   try {
     await pool.query(`
       INSERT INTO medical_incidences 
       (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, complaint_description, current_status, priority_level, satisfaction_score, ai_sentiment, ai_suggested_response, management_solution, resolved_by_admin)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      ON CONFLICT (audit_id) DO UPDATE SET current_status = EXCLUDED.current_status
+      ON CONFLICT (audit_id) DO UPDATE SET current_status = EXCLUDED.current_status, management_solution = EXCLUDED.management_solution, resolved_by_admin = EXCLUDED.resolved_by_admin
     `, [c.id, c.date, c.patientName, c.patientPhone || '', c.doctorName || '', c.specialty, c.area, c.description, c.status, c.priority, c.satisfaction, c.sentiment, c.suggestedResponse, c.managementResponse, c.resolvedBy]);
     res.sendStatus(201);
-  } catch (err) { 
-    console.error("❌ Error SQL Incidencias:", err.message);
-    res.status(500).json({ error: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/complaints/:id', ensurePool, async (req, res) => {
+app.put('/api/complaints/:id', ensureDbConnection, async (req, res) => {
   const { id } = req.params;
   const { status, managementResponse, resolvedBy } = req.body;
   try {
-    await pool.query(`UPDATE medical_incidences SET current_status = $1, management_solution = $2, resolved_by_admin = $3 WHERE audit_id = $4`, [status, managementResponse, resolvedBy, id]);
+    await pool.query('UPDATE medical_incidences SET current_status = $1, management_solution = $2, resolved_by_admin = $3 WHERE audit_id = $4', [status, managementResponse, resolvedBy, id]);
     res.sendStatus(200);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ESTADISTICAS
-app.get('/api/stats', ensurePool, async (req, res) => {
+// STATS
+app.get('/api/stats', ensureDbConnection, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM daily_stats ORDER BY stat_date DESC');
     res.json(result.rows.map(r => ({ date: r.stat_date.toISOString().split('T')[0], patients_attended: r.patients_attended, patients_called: r.patients_called })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/stats', ensurePool, async (req, res) => {
+app.post('/api/stats', ensureDbConnection, async (req, res) => {
   const s = req.body;
   try {
     await pool.query(`INSERT INTO daily_stats (stat_date, patients_attended, patients_called) VALUES ($1, $2, $3) ON CONFLICT (stat_date) DO UPDATE SET patients_attended = EXCLUDED.patients_attended, patients_called = EXCLUDED.patients_called`, [s.date, s.patients_attended, s.patients_called]);
@@ -218,11 +245,11 @@ app.post('/api/stats', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/clear-data', ensurePool, async (req, res) => {
+app.delete('/api/clear-data', ensureDbConnection, async (req, res) => {
   try {
     await pool.query('TRUNCATE TABLE medical_incidences, daily_stats');
     res.sendStatus(200);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(3008, '0.0.0.0', () => console.log('🚀 Nodo DAC Central v5.6 ACTIVO en puerto 3008'));
+app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend DAC Central v6.0 listo en puerto 3008'));
