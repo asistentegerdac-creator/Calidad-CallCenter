@@ -19,7 +19,10 @@ export const dbService = {
   async fetchUsers(): Promise<User[]> {
     try {
       const response = await fetch(`${API_BASE}/users`);
-      return response.ok ? await response.json() : [];
+      if (response.ok) {
+        return await response.json();
+      }
+      return [];
     } catch { return []; }
   },
 
@@ -34,14 +37,17 @@ export const dbService = {
     } catch { return null; }
   },
 
-  async saveUser(user: User): Promise<{ role: 'admin' | 'agent' } | null> {
+  async saveUser(user: User): Promise<User | null> {
     try {
       const response = await fetch(`${API_BASE}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user)
       });
-      return response.ok ? await response.json() : null;
+      if (response.ok) {
+        return await response.json();
+      }
+      return null;
     } catch { return null; }
   },
 

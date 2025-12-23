@@ -30,37 +30,44 @@ const App: React.FC = () => {
     localStorage.setItem('dac_users', JSON.stringify(users));
   }, [users]);
 
-  // Sincronización Automática Robusta
+  // Sincronización Automática Integral (Local -> Postgres)
   const autoSync = useCallback(async () => {
     const localComplaints = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
     const localUsers = JSON.parse(localStorage.getItem('dac_users') || '[]');
     
-    if (localComplaints.length === 0 && localUsers.length === 0) return;
+    if (localComplaints.length === 0 && localUsers.length === 0) {
+      // Si no hay nada local pendiente de subir, bajamos lo del servidor
+      const remoteUsers = await dbService.fetchUsers();
+      if (remoteUsers.length > 0) setUsers(remoteUsers);
+      const remoteComplaints = await dbService.fetchComplaints();
+      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
+      return;
+    }
 
-    setNotification({ msg: 'Sincronizando con Servidor...', type: 'success' });
+    setNotification({ msg: 'Sincronizando con Nodo Central...', type: 'success' });
     
     try {
-      // Sincronizar Usuarios
+      // 1. Migrar Usuarios locales
       for (const u of localUsers) {
         await dbService.saveUser(u);
       }
-      // Sincronizar Incidencias
+      // 2. Migrar Incidencias locales
       for (const c of localComplaints) {
         await dbService.saveComplaint(c);
       }
 
-      // IMPORTANTE: Limpiar local tras éxito para evitar duplicados en el próximo fetch
+      // 3. Una vez subido todo, limpiamos la cola de subida local y bajamos la verdad del servidor
       localStorage.setItem('dac_complaints', '[]');
       
-      const remoteData = await dbService.fetchComplaints();
       const remoteUsers = await dbService.fetchUsers();
+      const remoteComplaints = await dbService.fetchComplaints();
       
-      if (remoteData.length > 0) setComplaints(remoteData);
       if (remoteUsers.length > 0) setUsers(remoteUsers);
+      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
       
-      setNotification({ msg: 'Nodo Sincronizado Correctamente', type: 'success' });
+      setNotification({ msg: 'Sincronización Completada', type: 'success' });
     } catch (e) {
-      setNotification({ msg: 'Error en Sincronización Automática', type: 'error' });
+      setNotification({ msg: 'Nodo Central no respondió correctamente', type: 'error' });
     }
     setTimeout(() => setNotification(null), 3000);
   }, []);
@@ -71,27 +78,29 @@ const App: React.FC = () => {
       setIsOnline(connected);
       if (connected) {
         await autoSync();
-        const remoteComplaints = await dbService.fetchComplaints();
-        if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
       }
     };
     init();
   }, [autoSync]);
 
   const handleAddComplaint = async (c: Complaint) => {
+    // Primero visualmente y local
     setComplaints(prev => [c, ...prev]);
-    
+    const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+    localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
+
     if (isOnline) {
       const success = await dbService.saveComplaint(c);
-      if (!success) {
-        const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-        localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
+      if (success) {
+        // Si se guardó en el servidor, lo quitamos de la cola local de pendientes
+        const remainingLocal = JSON.parse(localStorage.getItem('dac_complaints') || '[]').filter((x: Complaint) => x.id !== c.id);
+        localStorage.setItem('dac_complaints', JSON.stringify(remainingLocal));
+        setNotification({ msg: 'Incidencia Sincronizada', type: 'success' });
+      } else {
+        setNotification({ msg: 'Error de Red - Pendiente de Envío', type: 'error' });
       }
-      setNotification({ msg: success ? 'Sincronizado' : 'Error Red - Guardado Local', type: success ? 'success' : 'error' });
     } else {
-      const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-      localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
-      setNotification({ msg: 'Guardado en Memoria Local', type: 'success' });
+      setNotification({ msg: 'Guardado Local (Modo Offline)', type: 'success' });
     }
     setTimeout(() => setNotification(null), 3000);
   };
@@ -102,7 +111,8 @@ const App: React.FC = () => {
     if (isOnline) {
       await dbService.updateComplaint(id, s, r, auditor);
     } else {
-      localStorage.setItem('dac_complaints', JSON.stringify(updated));
+      // Si estamos offline, guardamos el cambio localmente en la lista general
+      localStorage.setItem('dac_local_updates', JSON.stringify(updated));
     }
   };
 
@@ -123,26 +133,37 @@ const App: React.FC = () => {
         permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
       };
       
-      setUsers(prev => [...prev, newUser]);
-      if (isOnline) await dbService.saveUser(newUser);
-      
-      setCurrentUser(newUser);
+      if (isOnline) {
+        const saved = await dbService.saveUser(newUser);
+        if (saved) {
+          setUsers(prev => [...prev, saved]);
+          setCurrentUser(saved);
+        } else {
+          setUsers(prev => [...prev, newUser]);
+          setCurrentUser(newUser);
+        }
+      } else {
+        setUsers(prev => [...prev, newUser]);
+        setCurrentUser(newUser);
+      }
       setIsLoggedIn(true);
       return;
     }
 
+    // Login Online
     if (isOnline) {
       const userFromDb = await dbService.login(u, p);
       if (userFromDb) {
         setCurrentUser({
           ...userFromDb,
-          permissions: userFromDb.permissions || ['dashboard']
+          permissions: userFromDb.permissions || ['dashboard', 'settings']
         });
         setIsLoggedIn(true);
         return;
       }
     }
 
+    // Login Local
     const found = users.find(x => x.username === u && x.password === p);
     if (found || (u === 'admin' && p === 'admin')) {
       const userToLogin = found || { 
@@ -152,13 +173,13 @@ const App: React.FC = () => {
       setCurrentUser(userToLogin);
       setIsLoggedIn(true);
     } else {
-      alert('Credenciales no válidas en este nodo.');
+      alert('Acceso denegado: Usuario o contraseña incorrectos.');
     }
   };
 
   const hasPermission = (view: View) => {
     if (!currentUser) return false;
-    if (view === 'settings') return true; // Ajustes siempre visible
+    if (view === 'settings') return true; // Siempre visible para configuración de red
     return currentUser.permissions.includes(view);
   };
 
@@ -169,18 +190,18 @@ const App: React.FC = () => {
           <div className="glass-card p-10 w-full max-w-md shadow-2xl border-orange-200">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-900 rounded-3xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-black">CD</div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v5.0</span></h1>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Hospital Management Node</p>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Calidad DAC <span className="text-amber-500">v5.2</span></h1>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Gestión de Seguridad y Calidad Médica</p>
             </div>
             <form onSubmit={handleAuth} className="space-y-4">
-              <input name="user" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none" placeholder="Usuario Auditor" />
+              <input name="user" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none" placeholder="Usuario" />
               <input name="pass" type="password" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none" placeholder="Contraseña" />
-              <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">
-                {isRegisterMode ? 'Registrar en Nodo' : 'Ingresar al Sistema'}
+              <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest">
+                {isRegisterMode ? 'Crear Cuenta Maestra' : 'Entrar al Sistema'}
               </button>
             </form>
             <button onClick={() => setIsRegisterMode(!isRegisterMode)} className="w-full mt-6 text-[9px] font-black uppercase text-slate-400 tracking-widest hover:text-amber-500">
-              {isRegisterMode ? 'Ya tengo cuenta - Volver' : '¿Nuevo Auditor? Crear Cuenta Local'}
+              {isRegisterMode ? 'Regresar al Login' : '¿Nuevo Auditor? Registro Local'}
             </button>
           </div>
         </div>
@@ -188,13 +209,13 @@ const App: React.FC = () => {
         <>
           <aside className="w-full md:w-72 bg-white border-r border-orange-50 flex flex-col p-6 no-print h-auto md:h-screen sticky top-0 z-[100]">
             <div className="mb-10 flex items-center gap-4">
-              <div className="w-10 h-10 bg-amber-500 rounded-2xl flex items-center justify-center text-white font-black text-lg">CD</div>
+              <div className="w-10 h-10 bg-amber-500 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg">CD</div>
               <div>
-                <h2 className="text-lg font-black text-slate-900 leading-none">DAC PRO</h2>
+                <h2 className="text-lg font-black text-slate-900 leading-none tracking-tighter">DAC PRO</h2>
                 <div className="flex items-center gap-1.5 mt-1">
                   <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
                   <span className={`text-[7px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {isOnline ? 'Online - PostgreSQL' : 'Offline - Local DB'}
+                    {isOnline ? 'Sincronizado' : 'Modo Offline'}
                   </span>
                 </div>
               </div>
@@ -203,9 +224,9 @@ const App: React.FC = () => {
             <nav className="flex-1 space-y-2">
               {[
                 { id: 'dashboard', label: 'Monitor Calidad', icon: '📈' },
-                { id: 'incidences', label: 'Incidencias Reportadas', icon: '📑' },
-                { id: 'new-incidence', label: 'Nueva Incidencia', icon: '➕' },
-                { id: 'reports', label: 'Centro de Reportes', icon: '📋' },
+                { id: 'incidences', label: 'Gestión de Casos', icon: '📑' },
+                { id: 'new-incidence', label: 'Nuevo Reporte', icon: '➕' },
+                { id: 'reports', label: 'Centro de Datos', icon: '📋' },
                 { id: 'settings', label: 'Ajustes Nodo', icon: '⚙️' }
               ].filter(item => hasPermission(item.id as View)).map((item) => (
                 <button key={item.id} onClick={() => setActiveView(item.id as View)} className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeView === item.id ? 'sidebar-item-active' : 'text-slate-400 hover:bg-orange-50'}`}>
@@ -218,9 +239,9 @@ const App: React.FC = () => {
             <div className="mt-8 pt-6 border-t border-orange-50">
               <div className="mb-4 text-center">
                 <p className="text-[9px] font-black text-slate-900 uppercase">{currentUser?.name}</p>
-                <p className="text-[7px] font-bold text-amber-600 uppercase">{currentUser?.role === 'admin' ? 'Super Administrador' : 'Auditor Común'}</p>
+                <p className="text-[7px] font-bold text-amber-600 uppercase tracking-widest">{currentUser?.role === 'admin' ? 'Super Administrador' : 'Auditor'}</p>
               </div>
-              <button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); }} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-[10px] uppercase hover:bg-rose-100 transition-all">Salir del Nodo</button>
+              <button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); }} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-[10px] uppercase hover:bg-rose-100 transition-all">Cerrar Sesión</button>
             </div>
           </aside>
 
@@ -237,19 +258,14 @@ const App: React.FC = () => {
               {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
               {activeView === 'settings' && (
                 <Settings 
-                  areas={areas} 
-                  setAreas={setAreas} 
-                  specialties={specialties} 
-                  setSpecialties={setSpecialties}
-                  users={users}
-                  setUsers={setUsers}
+                  areas={areas} setAreas={setAreas} 
+                  specialties={specialties} setSpecialties={setSpecialties}
+                  users={users} setUsers={setUsers}
                   currentUser={currentUser}
                   isOnline={isOnline} 
                   onConnStatusChange={async (s) => {
                     setIsOnline(s);
-                    if (s) {
-                      await autoSync();
-                    }
+                    if (s) await autoSync();
                   }} 
                 />
               )}

@@ -26,7 +26,7 @@ app.post('/api/test-db', async (req, res) => {
     });
     await newPool.query('SELECT NOW()');
     
-    // Esquema de Usuarios con Permisos
+    // Esquema de Usuarios
     await newPool.query(`
       CREATE TABLE IF NOT EXISTS dac_users (
         user_id VARCHAR(50) PRIMARY KEY,
@@ -83,7 +83,7 @@ app.get('/api/users', ensurePool, async (req, res) => {
     const result = await pool.query('SELECT user_id as id, username, full_name as name, role, permissions FROM dac_users ORDER BY created_at DESC');
     res.json(result.rows.map(r => ({
       ...r,
-      permissions: r.permissions ? r.permissions.split(',') : []
+      permissions: r.permissions ? r.permissions.split(',') : ['dashboard']
     })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -93,8 +93,12 @@ app.post('/api/users', ensurePool, async (req, res) => {
   try {
     const countRes = await pool.query('SELECT COUNT(*) FROM dac_users');
     const isFirstUser = parseInt(countRes.rows[0].count) === 0;
+    
+    // Si es el primer usuario de la DB, forzar admin y todos los permisos
     const finalRole = (isFirstUser || u.role === 'admin') ? 'admin' : 'agent';
-    const permissionsStr = u.permissions ? u.permissions.join(',') : 'dashboard';
+    const permissionsStr = (isFirstUser || !u.permissions || u.permissions.length === 0) 
+      ? 'dashboard,incidences,new-incidence,reports,settings' 
+      : u.permissions.join(',');
 
     await pool.query(`
       INSERT INTO dac_users (user_id, username, password, full_name, role, permissions)
@@ -102,10 +106,11 @@ app.post('/api/users', ensurePool, async (req, res) => {
       ON CONFLICT (username) DO UPDATE SET 
         role = EXCLUDED.role, 
         permissions = EXCLUDED.permissions,
-        password = EXCLUDED.password
-    `, [u.id, u.username, u.password, u.name, finalRole, permissionsStr]);
+        password = EXCLUDED.password,
+        full_name = EXCLUDED.full_name
+    `, [u.id, u.username, u.password, u.name || u.username, finalRole, permissionsStr]);
     
-    res.status(201).json({ role: finalRole });
+    res.status(201).json({ id: u.id, username: u.username, name: u.name || u.username, role: finalRole, permissions: permissionsStr.split(',') });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -115,7 +120,7 @@ app.post('/api/login', ensurePool, async (req, res) => {
     const result = await pool.query('SELECT user_id as id, username, full_name as name, role, permissions FROM dac_users WHERE username = $1 AND password = $2', [username, password]);
     if (result.rows.length > 0) {
       const user = result.rows[0];
-      user.permissions = user.permissions ? user.permissions.split(',') : [];
+      user.permissions = user.permissions ? user.permissions.split(',') : ['dashboard'];
       res.json(user);
     } else {
       res.status(401).json({ error: 'Credenciales inválidas' });
@@ -126,7 +131,7 @@ app.post('/api/login', ensurePool, async (req, res) => {
 app.put('/api/users/:id', ensurePool, async (req, res) => {
   const { id } = req.params;
   const { role, permissions } = req.body;
-  const permissionsStr = permissions ? permissions.join(',') : '';
+  const permissionsStr = permissions ? permissions.join(',') : 'dashboard';
   try {
     await pool.query('UPDATE dac_users SET role = $1, permissions = $2 WHERE user_id = $3', [role, permissionsStr, id]);
     res.sendStatus(200);
@@ -167,9 +172,7 @@ app.post('/api/complaints', ensurePool, async (req, res) => {
       ON CONFLICT (audit_id) DO UPDATE SET
       current_status = EXCLUDED.current_status,
       management_solution = EXCLUDED.management_solution,
-      resolved_by_admin = EXCLUDED.resolved_by_admin,
-      patient_name = EXCLUDED.patient_name,
-      incidence_date = EXCLUDED.incidence_date`;
+      resolved_by_admin = EXCLUDED.resolved_by_admin`;
     
     await pool.query(query, [
       c.id, c.date, c.patientName, c.patientPhone || null, 
@@ -186,7 +189,7 @@ app.post('/api/complaints', ensurePool, async (req, res) => {
 
 app.delete('/api/clear-data', ensurePool, async (req, res) => {
   try {
-    await pool.query('TRUNCATE TABLE medical_incidences, daily_stats CASCADE');
+    await pool.query('TRUNCATE TABLE medical_incidences, daily_stats, dac_users CASCADE');
     res.sendStatus(200);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -215,4 +218,4 @@ app.post('/api/daily-stats', ensurePool, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend v4.9 con Sincronización Automática'));
+app.listen(3008, '0.0.0.0', () => console.log('🚀 Backend DAC v5.2 Ready'));
