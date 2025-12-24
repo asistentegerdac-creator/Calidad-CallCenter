@@ -89,9 +89,10 @@ export const Settings: React.FC<Props> = ({
 
   const handleCreateUser = async () => {
     if (!newUser.username || !newUser.password) return;
+    // Fixed reordering to avoid TS2783
     const userToSave: User = { 
-      id: newUser.id || `USR-${Date.now()}`, 
       ...newUser, 
+      id: newUser.id || `USR-${Date.now()}`, 
       permissions: ['dashboard'] 
     };
     if (isOnline) {

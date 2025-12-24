@@ -1,7 +1,9 @@
 
 import { Complaint, ComplaintStatus, DailyStat, User, AreaMapping } from '../types';
 
-const API_BASE = `http://${window.location.hostname}:3008/api`;
+// Fallback to 'localhost' if hostname is empty to prevent invalid URL construction (http://:3008/api)
+const hostname = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+const API_BASE = `http://${hostname}:3008/api`;
 
 export const dbService = {
   async checkHealth(): Promise<{ connected: boolean; message?: string }> {
@@ -87,6 +89,15 @@ export const dbService = {
       body: JSON.stringify(c)
     });
     return r.ok;
+  },
+
+  async deleteComplaint(id: string): Promise<boolean> {
+    try {
+      const r = await fetch(`${API_BASE}/complaints/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      return r.ok;
+    } catch { return false; }
   },
 
   async updateComplaint(id: string, status: ComplaintStatus, managementResponse: string, resolvedBy: string): Promise<boolean> {

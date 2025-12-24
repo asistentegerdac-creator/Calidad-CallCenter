@@ -191,9 +191,28 @@ app.post('/api/complaints', async (req, res) => {
       INSERT INTO medical_incidences 
       (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, manager_name, complaint_description, current_status, priority_level, satisfaction_score, ai_sentiment, ai_suggested_response, management_solution, resolved_by_admin)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-      ON CONFLICT (audit_id) DO UPDATE SET current_status = EXCLUDED.current_status, management_solution = EXCLUDED.management_solution, resolved_by_admin = EXCLUDED.resolved_by_admin
+      ON CONFLICT (audit_id) DO UPDATE SET 
+        incidence_date = EXCLUDED.incidence_date,
+        patient_name = EXCLUDED.patient_name,
+        patient_phone = EXCLUDED.patient_phone,
+        doctor_name = EXCLUDED.doctor_name,
+        specialty_name = EXCLUDED.specialty_name,
+        area_name = EXCLUDED.area_name,
+        manager_name = EXCLUDED.manager_name,
+        complaint_description = EXCLUDED.complaint_description,
+        current_status = EXCLUDED.current_status, 
+        management_solution = EXCLUDED.management_solution, 
+        resolved_by_admin = EXCLUDED.resolved_by_admin
     `, [c.id, c.date, c.patientName, c.patientPhone, c.doctorName, c.specialty, c.area, c.managerName, c.description, c.status, c.priority, c.satisfaction, c.sentiment, c.suggestedResponse, c.managementResponse, c.resolvedBy]);
     res.sendStatus(201);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/complaints/:id', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  try {
+    await pool.query('DELETE FROM medical_incidences WHERE audit_id = $1', [req.params.id]);
+    res.sendStatus(204);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

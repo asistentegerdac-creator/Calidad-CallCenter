@@ -81,6 +81,25 @@ const App: React.FC = () => {
     if (isOnline) await dbService.updateComplaint(id, s, r, auditor);
   };
 
+  const handleUpdateFullComplaint = async (updatedComplaint: Complaint) => {
+    const updated = complaints.map(c => c.id === updatedComplaint.id ? updatedComplaint : c);
+    setComplaints(updated);
+    localStorage.setItem('dac_complaints', JSON.stringify(updated));
+    if (isOnline) await dbService.saveComplaint(updatedComplaint);
+    setNotification({ msg: 'Incidencia Actualizada', type: 'success' });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleDeleteFullComplaint = async (id: string) => {
+    if (!confirm("¿Está seguro de eliminar esta incidencia permanentemente?")) return;
+    const updated = complaints.filter(c => c.id !== id);
+    setComplaints(updated);
+    localStorage.setItem('dac_complaints', JSON.stringify(updated));
+    if (isOnline) await dbService.deleteComplaint(id);
+    setNotification({ msg: 'Incidencia Eliminada', type: 'success' });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -172,7 +191,18 @@ const App: React.FC = () => {
             )}
             <div className="max-w-7xl mx-auto">
               {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
-              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} isOnline={isOnline} />}
+              {activeView === 'incidences' && (
+                <IncidencesReported 
+                  complaints={complaints} 
+                  currentUser={currentUser} 
+                  onUpdate={handleUpdateComplaint} 
+                  onUpdateFull={handleUpdateFullComplaint}
+                  onDelete={handleDeleteFullComplaint}
+                  isOnline={isOnline}
+                  areas={areas}
+                  specialties={specialties}
+                />
+              )}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
               {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
               {activeView === 'settings' && currentUser?.role === 'admin' && (
