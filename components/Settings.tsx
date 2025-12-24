@@ -19,7 +19,7 @@ interface Props {
 
 export const Settings: React.FC<Props> = ({ 
   users, setUsers, isOnline, onConnStatusChange,
-  currentTheme, setTheme
+  currentTheme, setTheme, areas, setAreas, specialties, setSpecialties
 }) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -46,7 +46,7 @@ export const Settings: React.FC<Props> = ({
     if (isOnline) {
       dbService.fetchUsers().then(u => u && setUsers(u));
     }
-  }, [isOnline]);
+  }, [isOnline, setUsers]);
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -79,7 +79,7 @@ export const Settings: React.FC<Props> = ({
       password: newUserForm.password, 
       name: newUserForm.username, 
       role: newUserForm.role, 
-      permissions: ['dashboard', 'incidences'] 
+      permissions: ['dashboard', 'incidences', 'new-incidence'] 
     };
 
     const saved = await dbService.saveUser(newUser);
@@ -131,12 +131,12 @@ export const Settings: React.FC<Props> = ({
 
         {isUnlocked && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 p-8 bg-black/40 rounded-[2rem] border border-white/5 animate-in slide-in-from-top-4">
-            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Host</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} /></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Host (IP o Localhost)</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} /></div>
             <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Puerto</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.port} onChange={e => setDbParams({...dbParams, port: e.target.value})} /></div>
-            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Database</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} /></div>
-            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Usuario</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} /></div>
-            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Password</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" type="password" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} /></div>
-            <div className="flex items-end"><button onClick={handleTestConnection} disabled={testing} className="w-full bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase shadow-2xl hover:bg-amber-400 text-white disabled:opacity-50">{testing ? 'PROBANDO...' : 'PROBAR Y GUARDAR'}</button></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre Base de Datos</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} /></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Usuario Postgres</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} /></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Contraseña</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" type="password" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} /></div>
+            <div className="flex items-end"><button onClick={handleTestConnection} disabled={testing} className="w-full bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase shadow-2xl hover:bg-amber-400 text-white disabled:opacity-50">{testing ? 'PROBANDO...' : 'PROBAR Y GUARDAR VÍNCULO'}</button></div>
           </div>
         )}
         {connMessage && <div className={`mt-6 p-4 rounded-2xl text-[10px] font-black uppercase text-center ${connMessage.includes('EXITOSA') ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{connMessage}</div>}
