@@ -150,6 +150,14 @@ app.post('/api/areas-config', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.delete('/api/areas-config/:areaName', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  try {
+    await pool.query('DELETE FROM dac_areas_config WHERE area_name = $1', [req.params.areaName]);
+    res.sendStatus(204);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/complaints', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
   try {
@@ -205,9 +213,17 @@ app.post('/api/users', async (req, res) => {
     await pool.query(`
       INSERT INTO dac_users (user_id, username, password, full_name, role, permissions) 
       VALUES ($1, $2, $3, $4, $5, $6) 
-      ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role, full_name = EXCLUDED.full_name
+      ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role, full_name = EXCLUDED.full_name, password = EXCLUDED.password, permissions = EXCLUDED.permissions
     `, [u.id, u.username, u.password, u.name, u.role, perms]);
     res.sendStatus(201);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/users/:userId', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  try {
+    await pool.query('DELETE FROM dac_users WHERE user_id = $1', [req.params.userId]);
+    res.sendStatus(204);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

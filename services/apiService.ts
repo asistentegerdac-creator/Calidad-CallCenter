@@ -38,6 +38,14 @@ export const dbService = {
     } catch {}
   },
 
+  async deleteAreaConfig(areaName: string) {
+    try {
+      await fetch(`${API_BASE}/areas-config/${encodeURIComponent(areaName)}`, {
+        method: 'DELETE'
+      });
+    } catch {}
+  },
+
   async fetchUsers(): Promise<User[]> {
     const r = await fetch(`${API_BASE}/users`);
     return r.ok ? await r.json() : [];
@@ -49,6 +57,14 @@ export const dbService = {
       body: JSON.stringify(u)
     });
     return r.ok ? await r.json() : null;
+  },
+
+  async deleteUser(userId: string) {
+    try {
+      await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}`, {
+        method: 'DELETE'
+      });
+    } catch {}
   },
 
   async login(username: string, password: string): Promise<User | null> {
