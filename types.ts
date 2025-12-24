@@ -20,7 +20,7 @@ export interface Complaint {
   doctorName?: string;
   specialty: string;
   area: string;
-  managerName?: string; // Jefe asignado
+  managerName?: string; // Jefe asignado automáticamente
   description: string;
   status: ComplaintStatus;
   priority: Priority;

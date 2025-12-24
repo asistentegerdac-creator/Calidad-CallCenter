@@ -18,6 +18,7 @@ const syncSchema = async (targetPool) => {
   try {
     await client.query('BEGIN');
     
+    // Tabla Usuarios
     await client.query(`
       CREATE TABLE IF NOT EXISTS dac_users (
         user_id VARCHAR(50) PRIMARY KEY,
@@ -30,7 +31,7 @@ const syncSchema = async (targetPool) => {
       );
     `);
 
-    // Nueva tabla para mapeo de áreas y jefaturas
+    // Tabla Mapeo Jefaturas
     await client.query(`
       CREATE TABLE IF NOT EXISTS dac_areas_config (
         area_name VARCHAR(100) PRIMARY KEY,
@@ -38,6 +39,7 @@ const syncSchema = async (targetPool) => {
       );
     `);
 
+    // Tabla Incidencias Principal
     await client.query(`
       CREATE TABLE IF NOT EXISTS medical_incidences (
         audit_id VARCHAR(50) PRIMARY KEY,
@@ -60,15 +62,14 @@ const syncSchema = async (targetPool) => {
       );
     `);
 
-    // Asegurar que la columna manager_name existe (migración dinámica)
-    await client.query(`
-      DO $$ 
-      BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='medical_incidences' AND column_name='manager_name') THEN
-          ALTER TABLE medical_incidences ADD COLUMN manager_name VARCHAR(255);
-        END IF;
-      END $$;
+    // Migración dinámica de columnas faltantes
+    const checkCol = await client.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name='medical_incidences' AND column_name='manager_name'
     `);
+    if (checkCol.rows.length === 0) {
+      await client.query('ALTER TABLE medical_incidences ADD COLUMN manager_name VARCHAR(255)');
+    }
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS daily_stats (
@@ -140,7 +141,11 @@ app.post('/api/areas-config', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
   const { areaName, managerName } = req.body;
   try {
-    await pool.query('INSERT INTO dac_areas_config (area_name, manager_name) VALUES ($1, $2) ON CONFLICT (area_name) DO UPDATE SET manager_name = EXCLUDED.manager_name', [areaName, managerName]);
+    await pool.query(`
+      INSERT INTO dac_areas_config (area_name, manager_name) 
+      VALUES ($1, $2) 
+      ON CONFLICT (area_name) DO UPDATE SET manager_name = EXCLUDED.manager_name
+    `, [areaName, managerName]);
     res.sendStatus(201);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -178,13 +183,12 @@ app.post('/api/complaints', async (req, res) => {
       INSERT INTO medical_incidences 
       (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, manager_name, complaint_description, current_status, priority_level, satisfaction_score, ai_sentiment, ai_suggested_response, management_solution, resolved_by_admin)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-      ON CONFLICT (audit_id) DO UPDATE SET current_status = EXCLUDED.current_status, management_solution = EXCLUDED.management_solution
+      ON CONFLICT (audit_id) DO UPDATE SET current_status = EXCLUDED.current_status, management_solution = EXCLUDED.management_solution, resolved_by_admin = EXCLUDED.resolved_by_admin
     `, [c.id, c.date, c.patientName, c.patientPhone, c.doctorName, c.specialty, c.area, c.managerName, c.description, c.status, c.priority, c.satisfaction, c.sentiment, c.suggestedResponse, c.managementResponse, c.resolvedBy]);
     res.sendStatus(201);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Otros endpoints se mantienen similares...
 app.get('/api/users', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
   try {
@@ -192,15 +196,21 @@ app.get('/api/users', async (req, res) => {
     res.json(r.rows.map(row => ({ ...row, permissions: row.permissions ? row.permissions.split(',') : [] })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.post('/api/users', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
   const u = req.body;
   try {
     const perms = Array.isArray(u.permissions) ? u.permissions.join(',') : 'dashboard';
-    const r = await pool.query(`INSERT INTO dac_users (user_id, username, password, full_name, role, permissions) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role, permissions = EXCLUDED.permissions RETURNING *`, [u.id, u.username, u.password, u.name, u.role, perms]);
-    res.status(201).json(r.rows[0]);
+    await pool.query(`
+      INSERT INTO dac_users (user_id, username, password, full_name, role, permissions) 
+      VALUES ($1, $2, $3, $4, $5, $6) 
+      ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role, full_name = EXCLUDED.full_name
+    `, [u.id, u.username, u.password, u.name, u.role, perms]);
+    res.sendStatus(201);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.post('/api/login', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
   const { username, password } = req.body;
@@ -212,6 +222,7 @@ app.post('/api/login', async (req, res) => {
     } else { res.status(401).json({ error: 'Credenciales inválidas' }); }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.get('/api/stats', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
   try {
@@ -219,16 +230,21 @@ app.get('/api/stats', async (req, res) => {
     res.json(r.rows.map(row => ({ ...row, date: row.date.toISOString().split('T')[0] })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.post('/api/stats', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
   const s = req.body;
   try {
-    await pool.query(`INSERT INTO daily_stats (stat_date, patients_attended, patients_called) VALUES ($1, $2, $3) ON CONFLICT (stat_date) DO UPDATE SET patients_attended = EXCLUDED.patients_attended, patients_called = EXCLUDED.patients_called`, [s.date, s.patients_attended, s.patients_called]);
+    await pool.query(`
+      INSERT INTO daily_stats (stat_date, patients_attended, patients_called) 
+      VALUES ($1, $2, $3) 
+      ON CONFLICT (stat_date) DO UPDATE SET patients_attended = EXCLUDED.patients_attended, patients_called = EXCLUDED.patients_called
+    `, [s.date, s.patients_attended, s.patients_called]);
     res.sendStatus(201);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 const PORT = 3008;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 [BACKEND] Sistema de Calidad DAC v7.8`);
+  console.log(`\n🚀 [BACKEND] DAC Cloud v7.9 Activo en el puerto ${PORT}`);
 });

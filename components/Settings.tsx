@@ -20,8 +20,29 @@ export const Settings: React.FC<Props> = ({
 }) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [connMessage, setConnMessage] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  
+  // Gestión de Jefaturas
   const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
   const [newMapping, setNewMapping] = useState({ area: '', manager: '' });
+
+  // Gestión de Usuarios y Catálogos
+  const [newUser, setNewUser] = useState({ username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' });
+  const [newItem, setNewItem] = useState({ type: 'area', value: '' });
+
+  const [dbParams, setDbParams] = useState({
+    host: localStorage.getItem('last_db_host') || 'localhost',
+    port: '5432', database: 'calidad_dac_db', user: 'postgres', password: ''
+  });
+
+  const themes = [
+    { id: 'classic', name: 'Dac Classic', color: '#f59e0b' },
+    { id: 'midnight', name: 'Midnight', color: '#6366f1' },
+    { id: 'emerald', name: 'Emerald', color: '#10b981' },
+    { id: 'cyber', name: 'Cyber 3D', color: '#d946ef' },
+    { id: 'oceanic', name: 'Oceanic', color: '#06b6d4' },
+  ];
 
   useEffect(() => {
     if (isOnline) {
@@ -31,11 +52,21 @@ export const Settings: React.FC<Props> = ({
 
   const handleTestConnection = async () => {
     setTesting(true);
-    const params = { host: 'localhost', port: '5432', database: 'calidad_dac_db', user: 'postgres', password: '' };
-    const r = await dbService.testConnection(params);
-    onConnStatusChange(r.success);
-    setTesting(false);
-    alert(r.success ? "Conexión y Esquema Sincronizados" : "Error de Conexión");
+    setConnMessage(null);
+    try {
+      const result = await dbService.testConnection(dbParams);
+      if (result.success) {
+        onConnStatusChange(true);
+        setConnMessage("✅ NODO VINCULADO CORRECTAMENTE");
+        localStorage.setItem('last_db_host', dbParams.host);
+        setIsUnlocked(false);
+      } else {
+        onConnStatusChange(false);
+        setConnMessage(`❌ FALLO DE CONEXIÓN`);
+      }
+    } catch (e) {
+      setConnMessage("❌ ERROR DE RED");
+    } finally { setTesting(false); }
   };
 
   const handleSaveMapping = async () => {
@@ -44,6 +75,36 @@ export const Settings: React.FC<Props> = ({
     await dbService.saveAreaConfig(mapping);
     setAreaMappings([...areaMappings.filter(m => m.areaName !== mapping.areaName), mapping]);
     setNewMapping({ area: '', manager: '' });
+    alert("Jefatura asignada correctamente.");
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUser.username || !newUser.password) return;
+    const userToSave: User = { 
+      id: `USR-${Date.now()}`, 
+      ...newUser, 
+      permissions: ['dashboard'] 
+    };
+    if (isOnline) {
+      const saved = await dbService.saveUser(userToSave);
+      setUsers([...users, userToSave]);
+      setNewUser({ username: '', name: '', password: '', role: 'agent' });
+      alert("Usuario guardado en Postgres.");
+    } else {
+      alert("Debe estar online para gestionar usuarios permanentes.");
+    }
+  };
+
+  const handleMigrate = async () => {
+    if (!isOnline) return alert("Conecte el Nodo primero.");
+    setMigrating(true);
+    let count = 0;
+    for (const c of complaints) {
+      const ok = await dbService.saveComplaint(c);
+      if (ok) count++;
+    }
+    setMigrating(false);
+    alert(`Migración terminada. ${count} incidencias subidas al servidor.`);
   };
 
   const handleExport = () => {
@@ -52,65 +113,189 @@ export const Settings: React.FC<Props> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `DAC_TOTAL_BACKUP_${new Date().getTime()}.json`;
+    link.download = `DAC_FULL_BACKUP_${new Date().getTime()}.json`;
     link.click();
   };
 
-  const removeItem = (type: 'area' | 'spec', value: string) => {
-    if (type === 'area') setAreas(areas.filter(a => a !== value));
-    else setSpecialties(specialties.filter(s => s !== value));
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data.complaints) setComplaints(data.complaints);
+        if (data.areas) setAreas(data.areas);
+        if (data.specialties) setSpecialties(data.specialties);
+        if (data.areaMappings) setAreaMappings(data.areaMappings);
+        alert("Restauración completa realizada.");
+      } catch (err) { alert("Archivo JSON inválido."); }
+    };
+    reader.readAsText(file);
+  };
+
+  const addItem = () => {
+    if (!newItem.value) return;
+    if (newItem.type === 'area') setAreas([...areas, newItem.value]);
+    else setSpecialties([...specialties, newItem.value]);
+    setNewItem({ ...newItem, value: '' });
   };
 
   return (
     <div className="space-y-12 pb-20 animate-in fade-in duration-500">
-      <div className="glass-card p-10 bg-white">
-        <h3 className="text-xl font-black mb-8 uppercase text-slate-900">Configuración de Jefaturas por Área</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-          <div className="space-y-4">
-             <label className="text-[10px] font-black uppercase text-slate-400">Asignar Jefe Responsable</label>
-             <div className="flex gap-2">
-               <select className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={newMapping.area} onChange={e => setNewMapping({...newMapping, area: e.target.value})}>
-                 <option value="">Seleccionar Área</option>
-                 {areas.map(a => <option key={a} value={a}>{a}</option>)}
-               </select>
-               <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Nombre del Jefe" value={newMapping.manager} onChange={e => setNewMapping({...newMapping, manager: e.target.value})} />
-               <button onClick={handleSaveMapping} className="px-6 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Vincular</button>
-             </div>
-          </div>
-          <div className="bg-slate-50 p-6 rounded-2xl max-h-48 overflow-y-auto">
-             <table className="w-full text-left text-[10px] font-bold">
-               <thead><tr className="border-b text-slate-400 uppercase"><th>Área</th><th>Jefe Responsable</th></tr></thead>
-               <tbody>
-                 {areaMappings.map(m => (
-                   <tr key={m.areaName} className="border-b border-white"><td>{m.areaName}</td><td>{m.managerName}</td></tr>
-                 ))}
-               </tbody>
-             </table>
-          </div>
-        </div>
-
-        <h3 className="text-xl font-black mb-8 uppercase text-slate-900">Gestión de Catálogos</h3>
+      
+      {/* 1. SECCIÓN JEFATURAS POR ÁREA */}
+      <div className="glass-card p-10 bg-white shadow-xl">
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
+          <span className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white text-sm">👔</span>
+          Organigrama: Jefaturas por Área
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          <div className="space-y-4">
-            <p className="text-[10px] font-black uppercase text-slate-400">Áreas Médicas</p>
-            <div className="flex flex-wrap gap-2">
-              {areas.map(a => <span key={a} className="px-3 py-1.5 bg-slate-100 rounded-lg text-[10px] font-bold">{a} <button onClick={() => removeItem('area', a)} className="ml-1 text-rose-500">✕</button></span>)}
-            </div>
-            <input className="w-full p-3 bg-slate-50 border rounded-xl text-xs" placeholder="Añadir área..." onKeyDown={e => { if(e.key === 'Enter') setAreas([...areas, (e.target as HTMLInputElement).value]); }} />
+          <div className="space-y-6">
+             <div className="space-y-2">
+                <label className="text-[9px] font-black uppercase text-slate-400">Seleccionar Área Médica</label>
+                <select className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm" value={newMapping.area} onChange={e => setNewMapping({...newMapping, area: e.target.value})}>
+                   <option value="">-- Seleccione Área --</option>
+                   {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+             </div>
+             <div className="space-y-2">
+                <label className="text-[9px] font-black uppercase text-slate-400">Nombre del Jefe Responsable</label>
+                <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm" placeholder="Ej: Dr. Roberto Pérez" value={newMapping.manager} onChange={e => setNewMapping({...newMapping, manager: e.target.value})} />
+             </div>
+             <button onClick={handleSaveMapping} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg">Vincular Jefatura</button>
           </div>
-          <div className="space-y-4">
-            <p className="text-[10px] font-black uppercase text-slate-400">Especialidades</p>
-            <div className="flex flex-wrap gap-2">
-              {specialties.map(s => <span key={s} className="px-3 py-1.5 bg-amber-50 rounded-lg text-[10px] font-bold text-amber-700">{s} <button onClick={() => removeItem('spec', s)} className="ml-1 text-rose-500">✕</button></span>)}
-            </div>
-            <input className="w-full p-3 bg-slate-50 border rounded-xl text-xs" placeholder="Añadir especialidad..." onKeyDown={e => { if(e.key === 'Enter') setSpecialties([...specialties, (e.target as HTMLInputElement).value]); }} />
+          <div className="bg-slate-50 rounded-[2rem] p-6 max-h-[250px] overflow-y-auto border border-slate-100">
+             <table className="w-full text-left">
+                <thead className="text-[9px] font-black uppercase text-slate-400 border-b"><tr><th className="pb-3">Área</th><th className="pb-3">Jefe</th></tr></thead>
+                <tbody className="divide-y divide-white">
+                   {areaMappings.map(m => (
+                     <tr key={m.areaName} className="text-[10px] font-black text-slate-700">
+                       <td className="py-2">{m.areaName}</td>
+                       <td className="py-2 text-amber-600">{m.managerName}</td>
+                     </tr>
+                   ))}
+                </tbody>
+             </table>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-6">
-        <button onClick={handleExport} className="flex-1 py-5 bg-white border border-slate-200 text-slate-900 rounded-3xl font-black text-[10px] uppercase shadow-sm">Exportar Backup Full JSON</button>
-        <button onClick={handleTestConnection} disabled={testing} className="flex-1 py-5 bg-amber-500 text-white rounded-3xl font-black text-[10px] uppercase shadow-xl">Sincronizar Tablas y Postgres</button>
+      {/* 2. CATÁLOGOS DINÁMICOS */}
+      <div className="glass-card p-10 bg-white">
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
+          <span className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-white text-sm">📚</span>
+          Gestión de Catálogos
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div className="space-y-4">
+             <p className="text-[10px] font-black uppercase text-slate-400">Departamentos / Áreas</p>
+             <div className="flex flex-wrap gap-2">
+                {areas.map(a => <span key={a} className="px-3 py-1.5 bg-slate-100 text-[10px] font-bold rounded-lg">{a}</span>)}
+             </div>
+             <div className="flex gap-2">
+                <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs" placeholder="Nueva área..." value={newItem.type === 'area' ? newItem.value : ''} onChange={e => setNewItem({type:'area', value: e.target.value})} />
+                <button onClick={addItem} className="px-6 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Añadir</button>
+             </div>
+          </div>
+          <div className="space-y-4">
+             <p className="text-[10px] font-black uppercase text-slate-400">Especialidades</p>
+             <div className="flex flex-wrap gap-2">
+                {specialties.map(s => <span key={s} className="px-3 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-lg">{s}</span>)}
+             </div>
+             <div className="flex gap-2">
+                <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs" placeholder="Nueva especialidad..." value={newItem.type === 'spec' ? newItem.value : ''} onChange={e => setNewItem({type:'spec', value: e.target.value})} />
+                <button onClick={addItem} className="px-6 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase">Añadir</button>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. NODO POSTGRES - RESTAURADO */}
+      <div className="glass-card p-10 bg-slate-900 !text-white shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
+        <div className="flex justify-between items-center relative z-10">
+          <div>
+            <h3 className="text-2xl font-black !text-white">🐘 Configuración de Nodo Postgres</h3>
+            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mt-1">Sincronización de Base de Datos Central</p>
+          </div>
+          <button onClick={() => setIsUnlocked(!isUnlocked)} className="px-8 py-4 bg-white/10 rounded-2xl font-black text-[10px] uppercase border border-white/5 hover:bg-white/20 transition-all">
+            {isUnlocked ? 'Cerrar Panel' : 'Configurar Nodo'}
+          </button>
+        </div>
+        {isUnlocked && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 p-8 bg-black/40 rounded-[2.5rem] border border-white/5 animate-in slide-in-from-top-4">
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Host</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.host} onChange={e => setDbParams({...dbParams, host: e.target.value})} /></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Puerto</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.port} onChange={e => setDbParams({...dbParams, port: e.target.value})} /></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Base de Datos</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} /></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Usuario</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} /></div>
+            <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase ml-2">Password</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" type="password" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} /></div>
+            <div className="flex items-end"><button onClick={handleTestConnection} disabled={testing} className="w-full bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase shadow-2xl hover:bg-amber-400 text-white disabled:opacity-50">{testing ? 'SINCRONIZANDO...' : 'VINCULAR Y CREAR TABLAS'}</button></div>
+          </div>
+        )}
+        {connMessage && <div className={`mt-6 p-4 rounded-2xl text-[10px] font-black uppercase text-center ${connMessage.includes('VINCULADO') ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{connMessage}</div>}
+      </div>
+
+      {/* 4. TEMAS VISUALES - RESTAURADO */}
+      <div className="glass-card p-10 bg-white">
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900">Personalización del Entorno</h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {themes.map(t => (
+            <button key={t.id} onClick={() => setTheme(t.id)} className={`p-5 rounded-[2rem] border-4 transition-all ${currentTheme === t.id ? 'border-amber-500 bg-amber-50' : 'border-slate-50 opacity-60 hover:opacity-100'}`}>
+              <div className="w-full h-10 rounded-xl mb-3" style={{ background: t.color }}></div>
+              <p className="text-[9px] font-black uppercase text-center">{t.name}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 5. GESTIÓN DE AUDITORES */}
+      <div className="glass-card p-10 bg-white">
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900">👥 Gestión de Auditores</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div className="space-y-4 bg-slate-50 p-6 rounded-[2rem]">
+             <p className="text-[10px] font-black uppercase text-slate-400 mb-4">Registrar Nuevo Perfil</p>
+             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
+             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Nombre Completo" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
+             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" type="password" placeholder="Password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+             <select className="w-full p-4 bg-white border rounded-xl text-xs font-bold" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as any})}>
+                <option value="agent">Auditor Estándar</option>
+                <option value="admin">Administrador Maestro</option>
+             </select>
+             <button onClick={handleCreateUser} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase">Grabar Auditor</button>
+          </div>
+          <div className="border rounded-[2rem] overflow-hidden">
+             <table className="w-full text-left">
+                <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b"><tr><th className="px-6 py-4">Usuario</th><th className="px-6 py-4 text-right">Rol</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map(u => (
+                    <tr key={u.id} className="text-[10px] font-black"><td className="px-6 py-4">{u.username}</td><td className="px-6 py-4 text-right uppercase text-slate-400">{u.role}</td></tr>
+                  ))}
+                </tbody>
+             </table>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. BACKUP Y MIGRACIÓN */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="glass-card p-10 bg-emerald-50 border-none">
+           <h4 className="text-sm font-black text-emerald-900 uppercase mb-4">Mantenimiento de Datos</h4>
+           <p className="text-xs text-emerald-700/70 mb-8">Suba todas las incidencias guardadas localmente hacia la base de datos Postgres del Nodo.</p>
+           <button onClick={handleMigrate} disabled={migrating || !isOnline} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg disabled:opacity-30">
+             {migrating ? 'Subiendo...' : `Subir ${complaints.length} incidencias a DB`}
+           </button>
+        </div>
+        <div className="glass-card p-10 bg-slate-50 border-none">
+           <h4 className="text-sm font-black text-slate-900 uppercase mb-4">Respaldo Total (Full JSON)</h4>
+           <div className="flex gap-4">
+             <button onClick={handleExport} className="flex-1 py-4 bg-white border text-[10px] font-black uppercase rounded-xl">Exportar JSON</button>
+             <label className="flex-1 py-4 bg-white border text-[10px] font-black uppercase rounded-xl text-center cursor-pointer">
+                Importar JSON
+                <input type="file" hidden accept=".json" onChange={handleImport} />
+             </label>
+           </div>
+        </div>
       </div>
     </div>
   );
