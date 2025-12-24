@@ -20,6 +20,7 @@ export interface Complaint {
   doctorName?: string;
   specialty: string;
   area: string;
+  managerName?: string; // Jefe asignado
   description: string;
   status: ComplaintStatus;
   priority: Priority;
@@ -28,6 +29,11 @@ export interface Complaint {
   suggestedResponse?: string;
   managementResponse?: string;
   resolvedBy?: string;
+}
+
+export interface AreaMapping {
+  areaName: string;
+  managerName: string;
 }
 
 export interface DailyStat {
@@ -43,7 +49,7 @@ export interface User {
   password?: string;
   name: string;
   role: 'admin' | 'agent';
-  permissions: string[]; // ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings']
+  permissions: string[];
 }
 
 export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'settings';
