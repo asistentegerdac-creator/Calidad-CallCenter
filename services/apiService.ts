@@ -1,22 +1,20 @@
 
 import { Complaint, ComplaintStatus, DailyStat, User } from '../types';
 
+// Detectamos la IP actual para asegurar conexión en red local
 const API_BASE = `http://${window.location.hostname}:3008/api`;
 
 export const dbService = {
-  // Verifica el estado del servidor y de la conexión a Postgres simultáneamente
-  async checkHealth(): Promise<{ connected: boolean; status: string; message?: string }> {
+  async checkHealth(): Promise<{ connected: boolean; message?: string }> {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-      
-      const response = await fetch(`${API_BASE}/health`, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      if (response.ok) return await response.json();
-      return { connected: false, status: 'error', message: 'Servidor responde con error' };
-    } catch (e: any) {
-      return { connected: false, status: 'offline', message: 'Backend fuera de línea' };
+      const resp = await fetch(`${API_BASE}/health`, { 
+        method: 'GET',
+        cache: 'no-store'
+      });
+      if (resp.ok) return await resp.json();
+      return { connected: false, message: 'Fallo de respuesta servidor' };
+    } catch (e) {
+      return { connected: false, message: 'Backend no accesible' };
     }
   },
 
@@ -30,20 +28,16 @@ export const dbService = {
       if (response.ok) return { success: true };
       const err = await response.json();
       return { success: false, message: err.error || 'Error desconocido' };
-    } catch (e: any) { 
-      return { success: false, message: 'No se pudo contactar con el backend en el puerto 3008' }; 
+    } catch (e) { 
+      return { success: false, message: 'Error de red (Puerto 3008)' }; 
     }
   },
 
   async fetchUsers(): Promise<User[]> {
     try {
       const response = await fetch(`${API_BASE}/users`);
-      if (response.status === 503) throw new Error('DB_OFFLINE');
       return response.ok ? await response.json() : [];
-    } catch (e) { 
-      console.warn("Error fetching users:", e);
-      return []; 
-    }
+    } catch { return []; }
   },
 
   async saveUser(user: User): Promise<User | null> {
@@ -53,13 +47,8 @@ export const dbService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user)
       });
-      if (response.ok) return await response.json();
-      const err = await response.json();
-      throw new Error(err.message || 'Error al grabar');
-    } catch (e: any) { 
-      console.error("Save User Fail:", e.message);
-      return null; 
-    }
+      return response.ok ? await response.json() : null;
+    } catch { return null; }
   },
 
   async login(username: string, password: string): Promise<User | null> {
