@@ -54,14 +54,14 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
         <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white text-xl">📋</div>
         <div>
           <h3 className="text-xl font-black text-slate-900 uppercase">Gestión de Calidad DAC</h3>
-          <p className="text-[9px] font-black uppercase text-slate-400 mt-1 tracking-widest">Capture la experiencia del paciente</p>
+          <p className="text-[9px] font-black uppercase text-slate-400 mt-1 tracking-widest">Reporte de Incidencia Hospitalaria</p>
         </div>
       </div>
       
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha de la Incidencia</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha del Reporte</label>
             <input type="date" required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
           </div>
           <div className="space-y-1">
@@ -70,12 +70,17 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad</label>
-            <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}>
-              {specialties.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
+
+          {/* Especialidad solo visible si el área es Consultas o Consulta */}
+          {(formData.area.toLowerCase().includes('consulta')) && (
+            <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad</label>
+              <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}>
+                {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
+
           <div className="space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe Responsable (Automático)</label>
             <input disabled className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-black text-sm text-amber-600" value={formData.managerName || 'SIN JEFE ASIGNADO'} />

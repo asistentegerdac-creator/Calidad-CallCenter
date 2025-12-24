@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Complaint, ComplaintStatus, User } from '../types';
 
@@ -32,7 +33,7 @@ export const ComplaintList: React.FC<Props> = ({ complaints, onUpdate, currentUs
       {complaints.length === 0 && (
         <div className="col-span-full py-32 text-center glass-card bg-white/50 border-dashed border-2 border-orange-100">
           <div className="text-6xl mb-6">🏥</div>
-          <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-[11px]">Sistema de Auditoría Limpio</p>
+          <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-[11px]">Sistema Gestión Calidad Limpio</p>
         </div>
       )}
 
@@ -73,7 +74,7 @@ export const ComplaintList: React.FC<Props> = ({ complaints, onUpdate, currentUs
             <button onClick={() => setSelected(null)} className="absolute top-10 right-10 text-3xl text-slate-300 hover:text-amber-500 transition-colors font-light">✕</button>
             
             <div className="mb-10">
-              <h3 className="text-3xl font-black tracking-tighter text-slate-900">Resolución de Auditoría Médica</h3>
+              <h3 className="text-3xl font-black tracking-tighter text-slate-900">Resolución de Gestión de Calidad DAC</h3>
               <p className="text-amber-600 font-black uppercase text-[10px] tracking-[0.3em] mt-2">EXPEDIENTE: {selected.id}</p>
             </div>
 
@@ -111,7 +112,7 @@ export const ComplaintList: React.FC<Props> = ({ complaints, onUpdate, currentUs
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] p-8 text-sm h-40 outline-none focus:border-amber-400 font-bold text-slate-900 transition-all" 
                   value={response} 
                   onChange={e => setResponse(e.target.value)} 
-                  placeholder="Detalle la acción tomada por la dirección del área..." 
+                  placeholder="Detalle la acción tomada por el equipo de calidad..." 
                 />
               </div>
 

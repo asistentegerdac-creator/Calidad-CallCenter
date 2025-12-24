@@ -101,14 +101,14 @@ export const IncidencesReported: React.FC<Props> = ({
               <button onClick={() => setEditing(null)} className="absolute top-10 right-10 text-4xl font-light text-slate-300 hover:text-rose-500 transition-colors">✕</button>
               
               <div className="mb-10">
-                <h3 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Editar Registro</h3>
-                <p className="text-amber-600 font-black text-[10px] uppercase tracking-[0.4em] mt-2">ID: {editing.id}</p>
+                <h3 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Gestión de Calidad DAC</h3>
+                <p className="text-amber-600 font-black text-[10px] uppercase tracking-[0.4em] mt-2">ID REPORTE: {editing.id}</p>
               </div>
 
               <form onSubmit={handleEditSave} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha de Incidencia</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha del Reporte</label>
                     <input type="date" className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" value={editing.date} onChange={e => setEditing({...editing, date: e.target.value})} />
                   </div>
                   <div className="space-y-1">
@@ -121,12 +121,17 @@ export const IncidencesReported: React.FC<Props> = ({
                       {areas.map(a => <option key={a} value={a}>{a}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad</label>
-                    <select className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" value={editing.specialty} onChange={e => setEditing({...editing, specialty: e.target.value})}>
-                      {specialties.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
+                  
+                  {/* Especialidad condicional */}
+                  {editing.area.toLowerCase().includes('consulta') && (
+                    <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad</label>
+                      <select className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" value={editing.specialty} onChange={e => setEditing({...editing, specialty: e.target.value})}>
+                        {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Médico Involucrado</label>
                     <input className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} />
