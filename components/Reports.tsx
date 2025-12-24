@@ -53,7 +53,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas }) => {
       <div className="glass-card p-10 bg-white shadow-xl no-print">
         <h3 className="text-xl font-black mb-8 uppercase text-slate-900 tracking-widest flex items-center gap-3">
            <span className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white text-sm">🔍</span>
-           Filtros de Auditoría Ejecutiva
+           Filtros de Gestión de Calidad DAC
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="space-y-1">
@@ -71,7 +71,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas }) => {
             </select>
           </div>
           <div className="flex items-end gap-3 md:col-span-2">
-            <button onClick={() => window.print()} className="flex-1 py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-black transition-all">Generar PDF de Auditoría</button>
+            <button onClick={() => window.print()} className="flex-1 py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-black transition-all">Generar PDF de Gestión</button>
             <button onClick={exportExcel} className="flex-1 py-4 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-emerald-700 transition-all">Exportar a Excel</button>
           </div>
         </div>
@@ -112,8 +112,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas }) => {
       <div className="print:block hidden bg-white p-16">
         <div className="border-b-8 border-slate-900 pb-12 mb-12 flex justify-between items-end">
           <div>
-            <h1 className="text-5xl font-black tracking-tighter">DAC AUDIT SYSTEM</h1>
-            <p className="text-amber-500 font-black text-xs uppercase tracking-[0.6em] mt-2">Hospital Management • Informe de Calidad de Atención</p>
+            <h1 className="text-5xl font-black tracking-tighter">DAC QUALITY SYSTEM</h1>
+            <p className="text-amber-500 font-black text-xs uppercase tracking-[0.6em] mt-2">Hospital Management • Informe de Gestión de Calidad</p>
           </div>
           <div className="text-right">
              <p className="text-xs font-black uppercase text-slate-900">Emisión: {new Date().toLocaleDateString()}</p>
@@ -172,7 +172,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas }) => {
            </div>
            <div className="text-center">
               <div className="w-56 border-b-2 border-slate-900 mb-4"></div>
-              <p className="text-[10px] font-black uppercase">Firma Auditoría de Calidad</p>
+              <p className="text-[10px] font-black uppercase">Firma Gestión de Calidad</p>
            </div>
         </div>
       </div>

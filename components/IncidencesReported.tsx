@@ -108,6 +108,10 @@ export const IncidencesReported: React.FC<Props> = ({
               <form onSubmit={handleEditSave} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha de Incidencia</label>
+                    <input type="date" className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" value={editing.date} onChange={e => setEditing({...editing, date: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre del Paciente</label>
                     <input className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" value={editing.patientName} onChange={e => setEditing({...editing, patientName: e.target.value})} />
                   </div>
@@ -149,8 +153,8 @@ export const IncidencesReported: React.FC<Props> = ({
               <button onClick={() => setSelected(null)} className="absolute top-10 right-10 text-4xl font-light text-slate-300 hover:text-rose-500 transition-colors">✕</button>
               
               <div className="mb-10">
-                <h3 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Gestión Administrativa</h3>
-                <p className="text-amber-600 font-black text-[10px] uppercase tracking-[0.4em] mt-2">NÚMERO DE AUDITORÍA: {selected.id}</p>
+                <h3 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Gestión de Calidad DAC</h3>
+                <p className="text-amber-600 font-black text-[10px] uppercase tracking-[0.4em] mt-2">NÚMERO DE REPORTE: {selected.id}</p>
               </div>
 
               <div className="space-y-8">
@@ -178,7 +182,7 @@ export const IncidencesReported: React.FC<Props> = ({
 
                 <div className="space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Resolución del Caso / Acciones Tomadas</label>
-                   <textarea id="resp_adm" className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] p-8 text-sm font-bold min-h-[150px] outline-none focus:border-amber-400 transition-all" defaultValue={selected.managementResponse} placeholder="Escriba la conclusión de la auditoría..." />
+                   <textarea id="resp_adm" className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] p-8 text-sm font-bold min-h-[150px] outline-none focus:border-amber-400 transition-all" defaultValue={selected.managementResponse} placeholder="Escriba la conclusión de la gestión..." />
                 </div>
 
                 <button onClick={() => {

@@ -45,7 +45,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
       suggestedResponse: analysis?.suggestedResponse,
     });
     setLoading(false);
-    setFormData({ ...formData, patientName: '', description: '', patientPhone: '', doctorName: '', satisfaction: 3 });
+    setFormData({ ...formData, patientName: '', description: '', patientPhone: '', doctorName: '', satisfaction: 3, date: new Date().toISOString().split('T')[0] });
   };
 
   return (
@@ -53,13 +53,17 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
       <div className="flex items-center gap-4 mb-10">
         <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white text-xl">📋</div>
         <div>
-          <h3 className="text-xl font-black text-slate-900 uppercase">Nueva Auditoría Médica</h3>
+          <h3 className="text-xl font-black text-slate-900 uppercase">Gestión de Calidad DAC</h3>
           <p className="text-[9px] font-black uppercase text-slate-400 mt-1 tracking-widest">Capture la experiencia del paciente</p>
         </div>
       </div>
       
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha de la Incidencia</label>
+            <input type="date" required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+          </div>
           <div className="space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Área del Evento</label>
             <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})}>
@@ -103,7 +107,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
             </div>
           </div>
           <button disabled={loading} className="w-full md:w-auto px-16 py-6 neo-warm-button rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-2xl hover:scale-105 transition-all disabled:opacity-50">
-            {loading ? 'ANALIZANDO CON IA...' : 'GRABAR AUDITORÍA'}
+            {loading ? 'ANALIZANDO CON IA...' : 'GRABAR REPORTE'}
           </button>
         </div>
       </form>

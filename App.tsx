@@ -131,7 +131,7 @@ const App: React.FC = () => {
             <div className="text-center mb-10">
               <div className="w-20 h-20 bg-slate-900 rounded-[2.5rem] mx-auto mb-6 flex items-center justify-center text-white text-4xl font-black shadow-2xl">CD</div>
               <h1 className="text-3xl font-black tracking-tighter uppercase text-slate-900">DAC <span className="text-amber-500">v7.5</span></h1>
-              <p className="text-[10px] font-black uppercase text-slate-400 mt-2 tracking-widest">Centro de Gestión de Calidad</p>
+              <p className="text-[10px] font-black uppercase text-slate-400 mt-2 tracking-widest">Gestión de Calidad DAC</p>
               <div className="flex items-center justify-center gap-2 mt-4">
                 <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></div>
                 <p className="text-[9px] font-black uppercase text-slate-400">{dbStatusMsg}</p>
@@ -163,7 +163,7 @@ const App: React.FC = () => {
             <nav className="flex-1 space-y-2">
               {[
                 { id: 'dashboard', label: 'Monitor Calidad', icon: '📈' },
-                { id: 'incidences', label: 'Auditoría', icon: '📑' },
+                { id: 'incidences', label: 'Gestión Calidad', icon: '📑' },
                 { id: 'new-incidence', label: 'Reportar', icon: '➕' },
                 { id: 'reports', label: 'Estadísticas', icon: '📋' },
                 // Solo admin ve Nodo

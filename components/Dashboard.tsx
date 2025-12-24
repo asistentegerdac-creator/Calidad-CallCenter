@@ -59,7 +59,7 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 relative z-10">
           <div>
             <h3 className="text-2xl font-black uppercase tracking-widest">Indicadores DAC</h3>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-1">SISTEMA DE AUDITORÍA Y CONTROL OPERATIVO</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-1">SISTEMA DE GESTIÓN DE CALIDAD DAC</p>
           </div>
           <div className="bg-slate-800 p-2 rounded-2xl flex items-center gap-4">
              <span className="text-[10px] font-black uppercase text-slate-500 ml-4">Fecha Control:</span>
