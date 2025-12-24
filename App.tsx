@@ -17,7 +17,7 @@ const App: React.FC = () => {
   const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
   const [currentTheme, setCurrentTheme] = useState<string>(() => localStorage.getItem('dac_theme') || 'classic');
 
-  const [users, setUsers] = useState<User[]>(() => JSON.parse(localStorage.getItem('dac_users') || '[]'));
+  const [users, setUsers] = useState<User[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>(() => JSON.parse(localStorage.getItem('dac_complaints') || '[]'));
   const [areas, setAreas] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_areas') || '["Urgencias", "Triaje", "Laboratorio", "Rayos X", "Consultas", "Farmacia"]'));
   const [specialties, setSpecialties] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_specialties') || '["Medicina General", "Pediatría", "Ginecología", "Cardiología"]'));
@@ -27,7 +27,11 @@ const App: React.FC = () => {
     localStorage.setItem('dac_theme', currentTheme);
   }, [currentTheme]);
 
-  // Monitoreo constante de salud del Nodo
+  useEffect(() => {
+    localStorage.setItem('dac_areas', JSON.stringify(areas));
+    localStorage.setItem('dac_specialties', JSON.stringify(specialties));
+  }, [areas, specialties]);
+
   useEffect(() => {
     const checkHealth = async () => {
       const health = await dbService.checkHealth();
@@ -35,7 +39,7 @@ const App: React.FC = () => {
       setDbStatusMsg(health.connected ? 'Nodo Activo' : (health.message || 'Sin Conexión'));
     };
     checkHealth();
-    const interval = setInterval(checkHealth, 10000); // Cada 10 seg
+    const interval = setInterval(checkHealth, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -56,15 +60,16 @@ const App: React.FC = () => {
   }, [isOnline, autoSync]);
 
   const handleAddComplaint = async (c: Complaint) => {
-    setComplaints(prev => [c, ...prev]);
+    const newComplaints = [c, ...complaints];
+    setComplaints(newComplaints);
+    localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
+
     if (isOnline) {
       const success = await dbService.saveComplaint(c);
-      if (success) setNotification({ msg: 'Incidencia Sincronizada', type: 'success' });
-      else setNotification({ msg: 'Fallo al sincronizar con Postgres', type: 'error' });
+      if (success) setNotification({ msg: 'Sincronizado con Postgres', type: 'success' });
+      else setNotification({ msg: 'Guardado Local (Error DB)', type: 'error' });
     } else {
-      const local = JSON.parse(localStorage.getItem('dac_complaints') || '[]');
-      localStorage.setItem('dac_complaints', JSON.stringify([c, ...local]));
-      setNotification({ msg: 'Guardado Local (Pendiente)', type: 'success' });
+      setNotification({ msg: 'Guardado Localmente', type: 'success' });
     }
     setTimeout(() => setNotification(null), 3000);
   };
@@ -72,6 +77,7 @@ const App: React.FC = () => {
   const handleUpdateComplaint = async (id: string, s: ComplaintStatus, r: string, auditor: string) => {
     const updated = complaints.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: auditor} : c);
     setComplaints(updated);
+    localStorage.setItem('dac_complaints', JSON.stringify(updated));
     if (isOnline) await dbService.updateComplaint(id, s, r, auditor);
   };
 
@@ -90,12 +96,11 @@ const App: React.FC = () => {
       }
     }
 
-    // Fallback local solo si es admin
     if (u === 'admin' && p === 'admin') {
-      setCurrentUser({ id: '1', name: 'Master Admin', username: 'admin', role: 'admin', permissions: ['dashboard', 'incidences', 'new-incidence', 'reports', 'settings'] });
+      setCurrentUser({ id: '1', name: 'Super Admin', username: 'admin', role: 'admin', permissions: ['all'] });
       setIsLoggedIn(true);
     } else {
-      alert('Error de acceso. Verifique su conexión al Nodo Central.');
+      alert('Acceso Denegado. Verifique conexión al Nodo.');
     }
   };
 
@@ -103,68 +108,83 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col md:flex-row transition-all duration-500">
       {!isLoggedIn ? (
         <div className="min-h-screen w-full flex items-center justify-center p-4">
-          <div className="glass-card p-10 w-full max-w-md shadow-2xl">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-slate-900 rounded-3xl mx-auto mb-4 flex items-center justify-center text-white text-3xl font-black">CD</div>
-              <h1 className="text-2xl font-black tracking-tighter uppercase">CALIDAD DAC <span className="text-amber-500">v6.0</span></h1>
-              <div className="flex items-center justify-center gap-2 mt-2">
-                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                <p className="text-[10px] font-black uppercase text-slate-400">{dbStatusMsg}</p>
+          <div className="glass-card p-12 w-full max-w-md shadow-2xl bg-white">
+            <div className="text-center mb-10">
+              <div className="w-20 h-20 bg-slate-900 rounded-[2.5rem] mx-auto mb-6 flex items-center justify-center text-white text-4xl font-black shadow-2xl">CD</div>
+              <h1 className="text-3xl font-black tracking-tighter uppercase text-slate-900">DAC <span className="text-amber-500">v7.5</span></h1>
+              <p className="text-[10px] font-black uppercase text-slate-400 mt-2 tracking-widest">Centro de Gestión de Calidad</p>
+              <div className="flex items-center justify-center gap-2 mt-4">
+                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></div>
+                <p className="text-[9px] font-black uppercase text-slate-400">{dbStatusMsg}</p>
               </div>
             </div>
-            <form onSubmit={handleAuth} className="space-y-4">
-              <input name="user" required className="w-full p-4 rounded-2xl font-bold outline-none" placeholder="Auditor" />
-              <input name="pass" type="password" required className="w-full p-4 rounded-2xl font-bold outline-none" placeholder="Password" />
-              <button className="w-full py-4 neo-warm-button rounded-2xl font-black text-[10px] uppercase tracking-widest">Acceder al Nodo</button>
+            <form onSubmit={handleAuth} className="space-y-6">
+              <div className="space-y-1">
+                 <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Identificación Auditor</label>
+                 <input name="user" required className="w-full p-4 rounded-2xl font-bold outline-none bg-slate-50 border border-slate-100" placeholder="Ej: admin" />
+              </div>
+              <div className="space-y-1">
+                 <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Clave de Nodo</label>
+                 <input name="pass" type="password" required className="w-full p-4 rounded-2xl font-bold outline-none bg-slate-50 border border-slate-100" placeholder="••••••••" />
+              </div>
+              <button className="w-full py-5 neo-warm-button rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:scale-[1.02] transition-transform">Inicia Sesión</button>
             </form>
           </div>
         </div>
       ) : (
         <>
-          <aside className="w-full md:w-72 border-r flex flex-col p-6 no-print h-auto md:h-screen sticky top-0 z-[100]">
-            <div className="mb-10 flex items-center gap-4">
-              <div className="w-10 h-10 bg-amber-500 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg">CD</div>
+          <aside className="w-full md:w-72 border-r flex flex-col p-6 no-print h-auto md:h-screen sticky top-0 z-[100] bg-white">
+            <div className="mb-10 flex items-center gap-4 px-2">
+              <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg">CD</div>
               <div>
-                <h2 className="text-lg font-black leading-none">DAC PRO</h2>
-                <span className={`text-[7px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-500' : 'text-rose-500'}`}>{dbStatusMsg}</span>
+                <h2 className="text-lg font-black leading-none text-slate-900">DAC CLOUD</h2>
+                <span className={`text-[8px] font-black uppercase tracking-widest ${isOnline ? 'text-emerald-500' : 'text-rose-500'}`}>{dbStatusMsg}</span>
               </div>
             </div>
             <nav className="flex-1 space-y-2">
               {[
-                { id: 'dashboard', label: 'Dashboard', icon: '📈' },
+                { id: 'dashboard', label: 'Monitor Calidad', icon: '📈' },
                 { id: 'incidences', label: 'Auditoría', icon: '📑' },
                 { id: 'new-incidence', label: 'Reportar', icon: '➕' },
-                { id: 'reports', label: 'Datos', icon: '📋' },
-                { id: 'settings', label: 'Nodo', icon: '⚙️' }
+                { id: 'reports', label: 'Estadísticas', icon: '📋' },
+                // Solo admin ve Nodo
+                ...(currentUser?.role === 'admin' ? [{ id: 'settings', label: 'Configuración', icon: '⚙️' }] : [])
               ].map((item) => (
-                <button key={item.id} onClick={() => setActiveView(item.id as View)} className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest ${activeView === item.id ? 'sidebar-item-active' : 'text-slate-400'}`}>
-                  <span className="text-lg">{item.icon}</span>{item.label}
+                <button key={item.id} onClick={() => setActiveView(item.id as View)} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeView === item.id ? 'sidebar-item-active' : 'text-slate-400 hover:bg-slate-50'}`}>
+                  <span className="text-xl">{item.icon}</span>{item.label}
                 </button>
               ))}
             </nav>
-            <div className="mt-8 pt-6 border-t">
-              <p className="text-[9px] font-black text-center uppercase">{currentUser?.name}</p>
-              <button onClick={() => setIsLoggedIn(false)} className="w-full mt-4 py-3 bg-rose-50/50 text-rose-600 rounded-2xl font-black text-[10px] uppercase">Salir</button>
+            <div className="mt-8 pt-6 border-t border-slate-100">
+              <div className="px-4 py-3 bg-slate-50 rounded-2xl mb-4">
+                <p className="text-[8px] font-black text-slate-400 uppercase">Sesión activa</p>
+                <p className="text-[10px] font-black text-slate-900 truncate">{currentUser?.name}</p>
+                <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md uppercase mt-1 inline-block">{currentUser?.role}</span>
+              </div>
+              <button onClick={() => setIsLoggedIn(false)} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-[10px] uppercase hover:bg-rose-100 transition-colors">Cerrar Sesión</button>
             </div>
           </aside>
-          <main className="flex-1 p-4 md:p-12 overflow-y-auto">
+          <main className="flex-1 p-4 md:p-10 overflow-y-auto">
             {notification && (
-              <div className={`fixed top-4 right-4 z-[500] p-4 ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'} text-white rounded-2xl shadow-2xl font-black text-[10px] uppercase animate-bounce`}>
+              <div className={`fixed top-8 right-8 z-[500] p-5 ${notification.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'} text-white rounded-[2rem] shadow-2xl font-black text-[10px] uppercase animate-in slide-in-from-right-10`}>
                 {notification.msg}
               </div>
             )}
-            {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
-            {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} isOnline={isOnline} />}
-            {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
-            {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
-            {activeView === 'settings' && (
-              <Settings 
-                areas={areas} setAreas={setAreas} specialties={specialties} setSpecialties={setSpecialties}
-                users={users} setUsers={setUsers} currentUser={currentUser}
-                isOnline={isOnline} onConnStatusChange={setIsOnline}
-                currentTheme={currentTheme} setTheme={setCurrentTheme}
-              />
-            )}
+            <div className="max-w-7xl mx-auto">
+              {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
+              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdate={handleUpdateComplaint} isOnline={isOnline} />}
+              {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
+              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
+              {activeView === 'settings' && currentUser?.role === 'admin' && (
+                <Settings 
+                  areas={areas} setAreas={setAreas} specialties={specialties} setSpecialties={setSpecialties}
+                  users={users} setUsers={setUsers} currentUser={currentUser}
+                  isOnline={isOnline} onConnStatusChange={setIsOnline}
+                  currentTheme={currentTheme} setTheme={setCurrentTheme}
+                  complaints={complaints} setComplaints={setComplaints}
+                />
+              )}
+            </div>
           </main>
         </>
       )}

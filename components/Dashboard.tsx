@@ -16,7 +16,6 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
     const fetch = async () => {
       const stats = await dbService.fetchDailyStats();
       setDailyStats(stats);
-      // Fix: Use 'date' property from DailyStat interface instead of 'stat_date'
       const todayStat = stats.find(s => s.date.includes(dateControl));
       if (todayStat) {
         setAttended(todayStat.patients_attended);
@@ -33,95 +32,105 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
     await dbService.saveDailyStat({ date: dateControl, patients_attended: attended, patients_called: called });
     const stats = await dbService.fetchDailyStats();
     setDailyStats(stats);
-    alert("Estadísticas sincronizadas.");
+    alert("Control diario actualizado.");
   };
 
   const metrics = useMemo(() => {
     const total = complaints.length || 0;
     const resolved = complaints.filter(c => c.status === ComplaintStatus.RESUELTO).length;
     const pending = complaints.filter(c => c.status === ComplaintStatus.PENDIENTE).length;
-    const processing = complaints.filter(c => c.status === ComplaintStatus.PROCESO).length;
     
-    // Comparativa satisfacción vs llamadas (Simplificado)
     const satisfactionAvg = total > 0 ? (complaints.reduce((a, b) => a + b.satisfaction, 0) / total).toFixed(1) : 0;
     
-    return { total, resolved, pending, processing, satisfactionAvg };
+    // Áreas Críticas (Top 3)
+    const areaCounts: any = {};
+    complaints.forEach(c => areaCounts[c.area] = (areaCounts[c.area] || 0) + 1);
+    const criticalAreas = Object.entries(areaCounts)
+      .sort((a: any, b: any) => b[1] - a[1])
+      .slice(0, 3);
+
+    return { total, resolved, pending, satisfactionAvg, criticalAreas };
   }, [complaints]);
 
   return (
-    <div className="space-y-8">
-      {/* Panel de Control Diario */}
-      <div className="glass-card p-8 bg-gradient-to-br from-slate-900 to-slate-800 text-white border-none shadow-2xl">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+    <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
+      <div className="glass-card p-10 bg-slate-900 text-white border-none shadow-2xl relative overflow-hidden">
+        <div className="absolute -top-20 -left-20 w-64 h-64 bg-amber-500/20 rounded-full blur-3xl"></div>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 relative z-10">
           <div>
-            <h3 className="text-xl font-black uppercase tracking-widest">Métricas de Gestión Operativa</h3>
-            <p className="text-slate-400 text-[10px] font-bold">CONTROL DIARIO DE ATENCIÓN Y SEGUIMIENTO</p>
+            <h3 className="text-2xl font-black uppercase tracking-widest">Indicadores DAC</h3>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-1">SISTEMA DE AUDITORÍA Y CONTROL OPERATIVO</p>
           </div>
-          <input type="date" className="bg-slate-700 border-none rounded-xl p-3 text-xs font-bold outline-none" value={dateControl} onChange={e => setDateControl(e.target.value)} />
+          <div className="bg-slate-800 p-2 rounded-2xl flex items-center gap-4">
+             <span className="text-[10px] font-black uppercase text-slate-500 ml-4">Fecha Control:</span>
+             <input type="date" className="bg-slate-700 border-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-white" value={dateControl} onChange={e => setDateControl(e.target.value)} />
+          </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase">Pacientes Atendidos</label>
-            <div className="flex items-center gap-4">
-              <input type="number" className="flex-1 bg-white/10 rounded-xl p-4 text-xl font-black outline-none border border-white/5" value={attended} onChange={e => setAttended(parseInt(e.target.value) || 0)} />
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10">
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pacientes Atendidos</label>
+            <input type="number" className="w-full bg-white/5 rounded-2xl p-5 text-2xl font-black outline-none border border-white/10" value={attended} onChange={e => setAttended(parseInt(e.target.value) || 0)} />
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase">Pacientes Llamados</label>
-            <div className="flex items-center gap-4">
-              <input type="number" className="flex-1 bg-white/10 rounded-xl p-4 text-xl font-black outline-none border border-white/5" value={called} onChange={e => setCalled(parseInt(e.target.value) || 0)} />
-            </div>
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pacientes Llamados</label>
+            <input type="number" className="w-full bg-white/5 rounded-2xl p-5 text-2xl font-black outline-none border border-white/10" value={called} onChange={e => setCalled(parseInt(e.target.value) || 0)} />
           </div>
           <div className="flex items-end">
-            <button onClick={handleSaveStats} className="w-full py-5 bg-amber-500 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-white hover:text-amber-600 transition-all">Sincronizar Control</button>
+            <button onClick={handleSaveStats} className="w-full py-6 bg-amber-500 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-2xl hover:bg-white hover:text-amber-600 transition-all">Sincronizar Datos</button>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="glass-card p-6 bg-white border border-orange-100">
-          <p className="text-[10px] font-black text-slate-400 uppercase">Estado Resueltos</p>
-          <h2 className="text-3xl font-black text-emerald-500">{metrics.resolved}</h2>
-          <div className="h-1 w-full bg-slate-50 mt-2 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500" style={{width: `${(metrics.resolved / metrics.total) * 100}%`}}></div>
+        <div className="glass-card p-8 bg-white">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Satisfacción Promedio</p>
+          <h2 className="text-4xl font-black text-slate-900">{metrics.satisfactionAvg} <span className="text-sm font-bold text-slate-400">/ 5.0</span></h2>
+          <div className="mt-4 flex gap-1">
+             {[1,2,3,4,5].map(s => <div key={s} className={`h-1.5 flex-1 rounded-full ${Number(metrics.satisfactionAvg) >= s ? 'bg-amber-500' : 'bg-slate-100'}`}></div>)}
           </div>
         </div>
-        <div className="glass-card p-6 bg-white border border-orange-100">
-          <p className="text-[10px] font-black text-slate-400 uppercase">Estado Pendientes</p>
-          <h2 className="text-3xl font-black text-rose-500">{metrics.pending}</h2>
+        <div className="glass-card p-8 bg-white border-l-8 border-emerald-500">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Casos Resueltos</p>
+          <h2 className="text-4xl font-black text-emerald-600">{metrics.resolved}</h2>
         </div>
-        <div className="glass-card p-6 bg-white border border-orange-100">
-          <p className="text-[10px] font-black text-slate-400 uppercase">En Proceso</p>
-          <h2 className="text-3xl font-black text-amber-500">{metrics.processing}</h2>
+        <div className="glass-card p-8 bg-white border-l-8 border-rose-500">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Casos Pendientes</p>
+          <h2 className="text-4xl font-black text-rose-600">{metrics.pending}</h2>
         </div>
-        <div className="glass-card p-6 bg-slate-100 border-none">
-          <p className="text-[10px] font-black text-slate-500 uppercase">Calidad Percibida</p>
-          <h2 className="text-3xl font-black text-slate-900">{metrics.satisfactionAvg} <span className="text-sm">/ 5</span></h2>
+        <div className="glass-card p-8 bg-slate-100 border-none">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Áreas Críticas (Quejas)</p>
+          <div className="space-y-2">
+            {metrics.criticalAreas.map(([area, count]: any) => (
+              <div key={area} className="flex justify-between items-center text-[10px] font-black">
+                <span className="text-slate-600 uppercase truncate max-w-[100px]">{area}</span>
+                <span className="text-slate-900 bg-white px-2 py-0.5 rounded-md shadow-sm">{count}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="glass-card p-8 bg-white border border-orange-50 min-h-[400px]">
-          <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Llamadas vs Atendidos (Historial)</h4>
+        <div className="glass-card p-10 bg-white border border-slate-100 shadow-sm min-h-[450px]">
+          <h4 className="text-sm font-black text-slate-900 mb-10 uppercase tracking-widest">Desempeño Operativo (7 Días)</h4>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={dailyStats.slice(0, 7).reverse()}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              {/* Fix: Use 'date' property from DailyStat interface instead of 'stat_date' */}
-              <XAxis dataKey="date" tickFormatter={(v) => v.split('T')[0].slice(5)} tick={{fontSize: 10, fontWeight: 'bold'}} />
-              <YAxis tick={{fontSize: 10, fontWeight: 'bold'}} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="patients_attended" name="Atendidos" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="patients_called" name="Llamados" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="date" tickFormatter={(v) => v.split('-').slice(1).join('/')} tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
+              <YAxis tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+              <Legend iconType="circle" />
+              <Bar dataKey="patients_attended" name="Atendidos" fill="#e2e8f0" radius={[10, 10, 0, 0]} />
+              <Bar dataKey="patients_called" name="Llamados" fill="#f59e0b" radius={[10, 10, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="glass-card p-8 bg-white border border-orange-50 min-h-[400px]">
-          <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Tendencia Mensual de Incidencias</h4>
+        <div className="glass-card p-10 bg-white border border-slate-100 shadow-sm min-h-[450px]">
+          <h4 className="text-sm font-black text-slate-900 mb-10 uppercase tracking-widest">Índice Mensual de Calidad</h4>
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={complaints.slice(0, 30)}>
+            <AreaChart data={complaints.slice(0, 30).reverse()}>
               <defs>
                 <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2}/>
@@ -131,7 +140,7 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="date" hide />
               <Tooltip />
-              <Area type="monotone" dataKey="satisfaction" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorInc)" />
+              <Area type="monotone" dataKey="satisfaction" stroke="#f59e0b" strokeWidth={4} fillOpacity={1} fill="url(#colorInc)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
