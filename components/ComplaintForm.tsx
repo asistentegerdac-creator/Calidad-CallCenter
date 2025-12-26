@@ -71,15 +71,15 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
             </select>
           </div>
 
-          {/* Especialidad solo visible si el área es Consultas o Consulta */}
-          {(formData.area.toLowerCase().includes('consulta')) && (
+          {/* Especialidad solo visible si el área contiene 'Consulta' */}
+          {(formData.area.toLowerCase().includes('consulta')) ? (
             <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
-              <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad</label>
+              <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad Médica</label>
               <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}>
                 {specialties.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-          )}
+          ) : null}
 
           <div className="space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe Responsable (Automático)</label>

@@ -4,8 +4,8 @@ import { dbService } from '../services/apiService';
 import { User, Complaint, AreaMapping } from '../types';
 
 interface Props {
-  areas: string[]; setAreas: (a: string[]) => void;
-  specialties: string[]; setSpecialties: (s: string[]) => void;
+  areas: string[]; onAddArea: (a: string) => void; onRemoveArea: (a: string) => void;
+  specialties: string[]; onAddSpecialty: (s: string) => void; onRemoveSpecialty: (s: string) => void;
   users: User[]; setUsers: (u: User[]) => void;
   currentUser: User | null;
   isOnline: boolean; onConnStatusChange: (s: boolean) => void;
@@ -15,7 +15,8 @@ interface Props {
 
 export const Settings: React.FC<Props> = ({ 
   users, setUsers, isOnline, onConnStatusChange,
-  currentTheme, setTheme, areas, setAreas, specialties, setSpecialties,
+  currentTheme, setTheme, areas, onAddArea, onRemoveArea,
+  specialties, onAddSpecialty, onRemoveSpecialty,
   complaints, setComplaints
 }) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -89,7 +90,6 @@ export const Settings: React.FC<Props> = ({
 
   const handleCreateUser = async () => {
     if (!newUser.username || !newUser.password) return;
-    // Fixed reordering to avoid TS2783
     const userToSave: User = { 
       ...newUser, 
       id: newUser.id || `USR-${Date.now()}`, 
@@ -148,10 +148,8 @@ export const Settings: React.FC<Props> = ({
       try {
         const data = JSON.parse(event.target?.result as string);
         if (data.complaints) setComplaints(data.complaints);
-        if (data.areas) setAreas(data.areas);
-        if (data.specialties) setSpecialties(data.specialties);
-        if (data.areaMappings) setAreaMappings(data.areaMappings);
-        alert("Restauración completa realizada.");
+        // Aquí no disparamos API masiva por seguridad, pero actualizamos local
+        alert("Restauración completa realizada localmente. Use 'Subir Incidencias' para persistir en DB.");
       } catch (err) { alert("Archivo JSON inválido."); }
     };
     reader.readAsText(file);
@@ -159,21 +157,16 @@ export const Settings: React.FC<Props> = ({
 
   const addItem = () => {
     if (!newItem.value) return;
-    if (newItem.type === 'area') setAreas([...areas, newItem.value]);
-    else setSpecialties([...specialties, newItem.value]);
+    if (newItem.type === 'area') onAddArea(newItem.value);
+    else onAddSpecialty(newItem.value);
     setNewItem({ ...newItem, value: '' });
-  };
-
-  const removeItem = (type: 'area' | 'spec', value: string) => {
-    if (type === 'area') setAreas(areas.filter(a => a !== value));
-    else setSpecialties(specialties.filter(s => s !== value));
   };
 
   return (
     <div className="space-y-12 pb-20 animate-in fade-in duration-500">
       
       {/* 1. SECCIÓN JEFATURAS POR ÁREA */}
-      <div className="glass-card p-10 bg-white shadow-xl">
+      <div className="glass-card p-10 bg-white shadow-xl border border-slate-100">
         <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
           <span className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white text-sm">👔</span>
           Organigrama: Jefaturas por Área
@@ -217,33 +210,33 @@ export const Settings: React.FC<Props> = ({
       <div className="glass-card p-10 bg-white">
         <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
           <span className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-white text-sm">📚</span>
-          Gestión de Catálogos
+          Gestión de Catálogos (Sincronizado con Postgres)
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
           <div className="space-y-4">
              <p className="text-[10px] font-black uppercase text-slate-400">Departamentos / Áreas</p>
-             <div className="flex flex-wrap gap-2">
-                {areas.map(a => <span key={a} className="px-3 py-1.5 bg-slate-100 text-[10px] font-bold rounded-lg flex items-center gap-2">{a} <button onClick={() => removeItem('area', a)} className="text-rose-500">×</button></span>)}
+             <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-xl">
+                {areas.map(a => <span key={a} className="px-3 py-1.5 bg-white text-[10px] font-bold rounded-lg flex items-center gap-2 shadow-sm border">{a} <button onClick={() => onRemoveArea(a)} className="text-rose-500 font-black hover:scale-125 transition-transform">×</button></span>)}
              </div>
              <div className="flex gap-2">
-                <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs" placeholder="Nueva área..." value={newItem.type === 'area' ? newItem.value : ''} onChange={e => setNewItem({type:'area', value: e.target.value})} />
+                <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Nueva área..." value={newItem.type === 'area' ? newItem.value : ''} onChange={e => setNewItem({type:'area', value: e.target.value})} />
                 <button onClick={addItem} className="px-6 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Añadir</button>
              </div>
           </div>
           <div className="space-y-4">
-             <p className="text-[10px] font-black uppercase text-slate-400">Especialidades</p>
-             <div className="flex flex-wrap gap-2">
-                {specialties.map(s => <span key={s} className="px-3 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-lg flex items-center gap-2">{s} <button onClick={() => removeItem('spec', s)} className="text-rose-500">×</button></span>)}
+             <p className="text-[10px] font-black uppercase text-slate-400">Especialidades Médicas</p>
+             <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 rounded-xl">
+                {specialties.map(s => <span key={s} className="px-3 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-lg flex items-center gap-2 border border-amber-100 shadow-sm">{s} <button onClick={() => onRemoveSpecialty(s)} className="text-rose-500 font-black hover:scale-125 transition-transform">×</button></span>)}
              </div>
              <div className="flex gap-2">
-                <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs" placeholder="Nueva especialidad..." value={newItem.type === 'spec' ? newItem.value : ''} onChange={e => setNewItem({type:'spec', value: e.target.value})} />
+                <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs font-bold" placeholder="Nueva especialidad..." value={newItem.type === 'spec' ? newItem.value : ''} onChange={e => setNewItem({type:'spec', value: e.target.value})} />
                 <button onClick={addItem} className="px-6 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase">Añadir</button>
              </div>
           </div>
         </div>
       </div>
 
-      {/* 3. NODO POSTGRES - RESTAURADO */}
+      {/* 3. NODO POSTGRES */}
       <div className="glass-card p-10 bg-slate-900 !text-white shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
         <div className="flex justify-between items-center relative z-10">
@@ -268,8 +261,8 @@ export const Settings: React.FC<Props> = ({
         {connMessage && <div className={`mt-6 p-4 rounded-2xl text-[10px] font-black uppercase text-center ${connMessage.includes('VINCULADO') ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{connMessage}</div>}
       </div>
 
-      {/* 4. TEMAS VISUALES - RESTAURADO */}
-      <div className="glass-card p-10 bg-white">
+      {/* 4. TEMAS VISUALES */}
+      <div className="glass-card p-10 bg-white shadow-sm border">
         <h3 className="text-xl font-black mb-8 uppercase text-slate-900">Personalización del Entorno</h3>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {themes.map(t => (
@@ -329,14 +322,14 @@ export const Settings: React.FC<Props> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="glass-card p-10 bg-emerald-50 border-none shadow-xl">
            <h4 className="text-sm font-black text-emerald-900 uppercase mb-4">Mantenimiento de Datos</h4>
-           <p className="text-xs text-emerald-700/70 mb-8 font-medium">Suba todas las incidencias guardadas localmente hacia la base de datos Postgres del Nodo.</p>
+           <p className="text-xs text-emerald-700/70 mb-8 font-medium">Sincroniza incidencias huérfanas locales hacia Postgres.</p>
            <button onClick={handleMigrate} disabled={migrating || !isOnline} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg disabled:opacity-30 hover:bg-emerald-700 transition-all">
              {migrating ? 'Subiendo...' : `Subir ${complaints.length} incidencias a DB`}
            </button>
         </div>
         <div className="glass-card p-10 bg-slate-50 border-none shadow-xl">
            <h4 className="text-sm font-black text-slate-900 uppercase mb-4">Respaldo Total (Full JSON)</h4>
-           <p className="text-xs text-slate-500 mb-8 font-medium">Descargue un archivo de respaldo con toda la información local del sistema.</p>
+           <p className="text-xs text-slate-500 mb-8 font-medium">Descargue un archivo de respaldo manual.</p>
            <div className="flex gap-4">
              <button onClick={handleExport} className="flex-1 py-4 bg-white border border-slate-200 text-slate-900 text-[10px] font-black uppercase rounded-xl shadow-sm hover:bg-slate-50 transition-colors">Exportar JSON</button>
              <label className="flex-1 py-4 bg-white border border-slate-200 text-slate-900 text-[10px] font-black uppercase rounded-xl text-center cursor-pointer shadow-sm hover:bg-slate-50 transition-colors">

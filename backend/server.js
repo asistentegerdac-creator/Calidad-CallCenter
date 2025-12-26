@@ -18,6 +18,19 @@ const syncSchema = async (targetPool) => {
   try {
     await client.query('BEGIN');
     
+    // Tabla Maestras de Catálogos
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS dac_areas_master (
+        name VARCHAR(100) PRIMARY KEY
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS dac_specialties_master (
+        name VARCHAR(100) PRIMARY KEY
+      );
+    `);
+
     // Tabla Usuarios
     await client.query(`
       CREATE TABLE IF NOT EXISTS dac_users (
@@ -62,15 +75,6 @@ const syncSchema = async (targetPool) => {
       );
     `);
 
-    // Migración dinámica de columnas faltantes
-    const checkCol = await client.query(`
-      SELECT column_name FROM information_schema.columns 
-      WHERE table_name='medical_incidences' AND column_name='manager_name'
-    `);
-    if (checkCol.rows.length === 0) {
-      await client.query('ALTER TABLE medical_incidences ADD COLUMN manager_name VARCHAR(255)');
-    }
-
     await client.query(`
       CREATE TABLE IF NOT EXISTS daily_stats (
         stat_date DATE PRIMARY KEY,
@@ -80,7 +84,7 @@ const syncSchema = async (targetPool) => {
     `);
 
     await client.query('COMMIT');
-    console.log("✅ [ESQUEMA] Base de datos sincronizada.");
+    console.log("✅ [ESQUEMA] Base de datos sincronizada y tablas maestras creadas.");
   } catch (err) {
     await client.query('ROLLBACK');
     console.error("❌ [ESQUEMA] Error:", err.message);
@@ -104,6 +108,60 @@ const loadPersistedConfig = async () => {
 };
 
 loadPersistedConfig();
+
+// --- ENDPOINTS CATÁLOGOS ---
+
+app.get('/api/catalog/areas', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  try {
+    const r = await pool.query('SELECT name FROM dac_areas_master ORDER BY name ASC');
+    res.json(r.rows.map(row => row.name));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/catalog/areas', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  const { name } = req.body;
+  try {
+    await pool.query('INSERT INTO dac_areas_master (name) VALUES ($1) ON CONFLICT DO NOTHING', [name]);
+    res.sendStatus(201);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/catalog/areas/:name', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  try {
+    await pool.query('DELETE FROM dac_areas_master WHERE name = $1', [req.params.name]);
+    res.sendStatus(204);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/catalog/specialties', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  try {
+    const r = await pool.query('SELECT name FROM dac_specialties_master ORDER BY name ASC');
+    res.json(r.rows.map(row => row.name));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/catalog/specialties', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  const { name } = req.body;
+  try {
+    await pool.query('INSERT INTO dac_specialties_master (name) VALUES ($1) ON CONFLICT DO NOTHING', [name]);
+    res.sendStatus(201);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/catalog/specialties/:name', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  try {
+    await pool.query('DELETE FROM dac_specialties_master WHERE name = $1', [req.params.name]);
+    res.sendStatus(204);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- ENDPOINTS CONFIGURACIÓN ---
 
 app.post('/api/test-db', async (req, res) => {
   const config = req.body;
@@ -281,5 +339,5 @@ app.post('/api/stats', async (req, res) => {
 
 const PORT = 3008;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 [BACKEND] DAC Cloud v7.9 Activo en el puerto ${PORT}`);
+  console.log(`\n🚀 [BACKEND] DAC Cloud v8.0 Activo en el puerto ${PORT}`);
 });

@@ -1,7 +1,6 @@
 
 import { Complaint, ComplaintStatus, DailyStat, User, AreaMapping } from '../types';
 
-// Fallback to 'localhost' if hostname is empty to prevent invalid URL construction (http://:3008/api)
 const hostname = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
 const API_BASE = `http://${hostname}:3008/api`;
 
@@ -24,6 +23,56 @@ export const dbService = {
     } catch { return { success: false }; }
   },
 
+  // --- MÉTODOS CATÁLOGOS MAESTROS ---
+  async fetchAreas(): Promise<string[]> {
+    try {
+      const r = await fetch(`${API_BASE}/catalog/areas`);
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
+  },
+
+  async saveArea(name: string) {
+    try {
+      await fetch(`${API_BASE}/catalog/areas`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+    } catch {}
+  },
+
+  async deleteArea(name: string) {
+    try {
+      await fetch(`${API_BASE}/catalog/areas/${encodeURIComponent(name)}`, {
+        method: 'DELETE'
+      });
+    } catch {}
+  },
+
+  async fetchSpecialties(): Promise<string[]> {
+    try {
+      const r = await fetch(`${API_BASE}/catalog/specialties`);
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
+  },
+
+  async saveSpecialty(name: string) {
+    try {
+      await fetch(`${API_BASE}/catalog/specialties`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+    } catch {}
+  },
+
+  async deleteSpecialty(name: string) {
+    try {
+      await fetch(`${API_BASE}/catalog/specialties/${encodeURIComponent(name)}`, {
+        method: 'DELETE'
+      });
+    } catch {}
+  },
+
+  // --- MÉTODOS CONFIGURACIÓN JEFATURAS ---
   async fetchAreasConfig(): Promise<AreaMapping[]> {
     try {
       const r = await fetch(`${API_BASE}/areas-config`);
@@ -48,9 +97,12 @@ export const dbService = {
     } catch {}
   },
 
+  // --- MÉTODOS USUARIOS ---
   async fetchUsers(): Promise<User[]> {
-    const r = await fetch(`${API_BASE}/users`);
-    return r.ok ? await r.json() : [];
+    try {
+      const r = await fetch(`${API_BASE}/users`);
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
   },
 
   async saveUser(u: User): Promise<User | null> {
@@ -77,10 +129,12 @@ export const dbService = {
     return r.ok ? await r.json() : null;
   },
 
-  async fetchComplaints(start?: string, end?: string): Promise<Complaint[]> {
-    let url = `${API_BASE}/complaints`;
-    const r = await fetch(url);
-    return r.ok ? await r.json() : [];
+  // --- MÉTODOS INCIDENCIAS ---
+  async fetchComplaints(): Promise<Complaint[]> {
+    try {
+      const r = await fetch(`${API_BASE}/complaints`);
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
   },
 
   async saveComplaint(c: Complaint): Promise<boolean> {
@@ -108,6 +162,7 @@ export const dbService = {
     return r.ok;
   },
 
+  // --- MÉTODOS ESTADÍSTICAS ---
   async fetchDailyStats(): Promise<DailyStat[]> {
     const r = await fetch(`${API_BASE}/stats`);
     return r.ok ? await r.json() : [];

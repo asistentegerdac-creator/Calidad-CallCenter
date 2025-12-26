@@ -19,6 +19,7 @@ const App: React.FC = () => {
 
   const [users, setUsers] = useState<User[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>(() => JSON.parse(localStorage.getItem('dac_complaints') || '[]'));
+  
   const [areas, setAreas] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_areas') || '["Urgencias", "Triaje", "Laboratorio", "Rayos X", "Consultas", "Farmacia"]'));
   const [specialties, setSpecialties] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_specialties') || '["Medicina General", "Pediatría", "Ginecología", "Cardiología"]'));
 
@@ -48,15 +49,27 @@ const App: React.FC = () => {
     try {
       const remoteUsers = await dbService.fetchUsers();
       if (remoteUsers.length > 0) setUsers(remoteUsers);
+      
       const remoteComplaints = await dbService.fetchComplaints();
       if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
+
+      const remoteAreas = await dbService.fetchAreas();
+      if (remoteAreas.length > 0) setAreas(remoteAreas);
+
+      const remoteSpecs = await dbService.fetchSpecialties();
+      if (remoteSpecs.length > 0) setSpecialties(remoteSpecs);
+
     } catch (e) {
       console.error("Error en autoSync");
     }
   }, [isOnline]);
 
   useEffect(() => {
-    if (isOnline) autoSync();
+    if (isOnline) {
+      autoSync();
+      const syncInterval = setInterval(autoSync, 30000); // Sincronización automática cada 30 segundos
+      return () => clearInterval(syncInterval);
+    }
   }, [isOnline, autoSync]);
 
   const handleAddComplaint = async (c: Complaint) => {
@@ -75,10 +88,25 @@ const App: React.FC = () => {
   };
 
   const handleUpdateComplaint = async (id: string, s: ComplaintStatus, r: string, auditor: string) => {
-    const updated = complaints.map(c => c.id === id ? {...c, status: s, managementResponse: r, resolvedBy: auditor} : c);
-    setComplaints(updated);
-    localStorage.setItem('dac_complaints', JSON.stringify(updated));
-    if (isOnline) await dbService.updateComplaint(id, s, r, auditor);
+    const original = complaints.find(c => c.id === id);
+    if (!original) return;
+
+    const updatedObj: Complaint = {
+      ...original,
+      status: s,
+      managementResponse: r,
+      resolvedBy: auditor
+    };
+
+    const updatedList = complaints.map(c => c.id === id ? updatedObj : c);
+    setComplaints(updatedList);
+    localStorage.setItem('dac_complaints', JSON.stringify(updatedList));
+    
+    if (isOnline) {
+      await dbService.saveComplaint(updatedObj);
+      setNotification({ msg: 'Estado y Comentario Actualizados', type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+    }
   };
 
   const handleUpdateFullComplaint = async (updatedComplaint: Complaint) => {
@@ -123,6 +151,32 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddArea = async (name: string) => {
+    if (areas.includes(name)) return;
+    const updated = [...areas, name];
+    setAreas(updated);
+    if (isOnline) await dbService.saveArea(name);
+  };
+
+  const handleRemoveArea = async (name: string) => {
+    const updated = areas.filter(a => a !== name);
+    setAreas(updated);
+    if (isOnline) await dbService.deleteArea(name);
+  };
+
+  const handleAddSpecialty = async (name: string) => {
+    if (specialties.includes(name)) return;
+    const updated = [...specialties, name];
+    setSpecialties(updated);
+    if (isOnline) await dbService.saveSpecialty(name);
+  };
+
+  const handleRemoveSpecialty = async (name: string) => {
+    const updated = specialties.filter(s => s !== name);
+    setSpecialties(updated);
+    if (isOnline) await dbService.deleteSpecialty(name);
+  };
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row transition-all duration-500">
       {!isLoggedIn ? (
@@ -130,7 +184,7 @@ const App: React.FC = () => {
           <div className="glass-card p-12 w-full max-w-md shadow-2xl bg-white">
             <div className="text-center mb-10">
               <div className="w-20 h-20 bg-slate-900 rounded-[2.5rem] mx-auto mb-6 flex items-center justify-center text-white text-4xl font-black shadow-2xl">CD</div>
-              <h1 className="text-3xl font-black tracking-tighter uppercase text-slate-900">DAC <span className="text-amber-500">v7.5</span></h1>
+              <h1 className="text-3xl font-black tracking-tighter uppercase text-slate-900">DAC <span className="text-amber-500">v8.0</span></h1>
               <p className="text-[10px] font-black uppercase text-slate-400 mt-2 tracking-widest">Gestión de Calidad DAC</p>
               <div className="flex items-center justify-center gap-2 mt-4">
                 <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></div>
@@ -166,7 +220,6 @@ const App: React.FC = () => {
                 { id: 'incidences', label: 'Gestión Calidad', icon: '📑' },
                 { id: 'new-incidence', label: 'Reportar', icon: '➕' },
                 { id: 'reports', label: 'Estadísticas', icon: '📋' },
-                // Solo admin ve Nodo
                 ...(currentUser?.role === 'admin' ? [{ id: 'settings', label: 'Configuración', icon: '⚙️' }] : [])
               ].map((item) => (
                 <button key={item.id} onClick={() => setActiveView(item.id as View)} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeView === item.id ? 'sidebar-item-active' : 'text-slate-400 hover:bg-slate-50'}`}>
@@ -201,13 +254,23 @@ const App: React.FC = () => {
                   isOnline={isOnline}
                   areas={areas}
                   specialties={specialties}
+                  onRefresh={autoSync}
                 />
               )}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
-              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} />}
+              {activeView === 'reports' && (
+                <Reports 
+                  complaints={complaints} 
+                  areas={areas} 
+                  onUpdate={handleUpdateComplaint}
+                  onUpdateFull={handleUpdateFullComplaint}
+                  currentUser={currentUser}
+                />
+              )}
               {activeView === 'settings' && currentUser?.role === 'admin' && (
                 <Settings 
-                  areas={areas} setAreas={setAreas} specialties={specialties} setSpecialties={setSpecialties}
+                  areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea}
+                  specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty}
                   users={users} setUsers={setUsers} currentUser={currentUser}
                   isOnline={isOnline} onConnStatusChange={setIsOnline}
                   currentTheme={currentTheme} setTheme={setCurrentTheme}
