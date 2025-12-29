@@ -22,7 +22,6 @@ export const IncidencesReported: React.FC<Props> = ({
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   const [filterManager, setFilterManager] = useState('Todos');
 
-  // Estados temporales para el modal de resolución (Quick View)
   const [tempStatus, setTempStatus] = useState<ComplaintStatus>(ComplaintStatus.PENDIENTE);
   const [tempResponse, setTempResponse] = useState('');
 
@@ -30,7 +29,6 @@ export const IncidencesReported: React.FC<Props> = ({
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
   }, []);
 
-  // Sincronizar estados temporales cuando se selecciona una tarjeta
   useEffect(() => {
     if (selected) {
       setTempStatus(selected.status);
@@ -43,10 +41,27 @@ export const IncidencesReported: React.FC<Props> = ({
   };
 
   const filtered = useMemo(() => {
-    return complaints.filter(c => filterManager === 'Todos' || c.managerName === filterManager);
+    const statusOrder = {
+      [ComplaintStatus.PENDIENTE]: 0,
+      [ComplaintStatus.PROCESO]: 1,
+      [ComplaintStatus.RESUELTO]: 2,
+    };
+
+    return complaints
+      .filter(c => filterManager === 'Todos' || c.managerName === filterManager)
+      .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
   }, [complaints, filterManager]);
 
   const managers = useMemo(() => Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean))), [complaints]);
+
+  const getStatusBadgeClass = (status: ComplaintStatus) => {
+    switch(status) {
+      case ComplaintStatus.PENDIENTE: return 'bg-amber-100 text-amber-700 border-amber-200';
+      case ComplaintStatus.PROCESO: return 'bg-blue-100 text-blue-700 border-blue-200';
+      case ComplaintStatus.RESUELTO: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      default: return 'bg-slate-100 text-slate-700';
+    }
+  };
 
   const handleFullEditSave = () => {
     if (editing) {
@@ -85,7 +100,9 @@ export const IncidencesReported: React.FC<Props> = ({
         {filtered.map(c => {
           const noLlamar = isNoCall(c.patientPhone, c.patientName);
           return (
-            <div key={c.id} className={`glass-card bg-white p-6 border-t-4 border-t-amber-500 hover:shadow-xl transition-all relative flex flex-col min-h-[380px] cursor-pointer ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-2' : ''}`} onClick={() => setSelected(c)}>
+            <div key={c.id} className={`glass-card bg-white p-6 border-t-4 hover:shadow-xl transition-all relative flex flex-col min-h-[380px] cursor-pointer ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-2' : ''}`} 
+                 style={{ borderTopColor: c.status === ComplaintStatus.PENDIENTE ? '#f59e0b' : c.status === ComplaintStatus.PROCESO ? '#3b82f6' : '#10b981' }}
+                 onClick={() => setSelected(c)}>
               <div className="mb-4">
                 <div className="flex justify-between items-start">
                   <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
@@ -109,7 +126,7 @@ export const IncidencesReported: React.FC<Props> = ({
                  <p className="text-[11px] text-slate-600 font-semibold leading-relaxed line-clamp-4">"{c.description}"</p>
               </div>
               <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${c.status === 'Resuelto' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{c.status}</span>
+                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusBadgeClass(c.status)}`}>{c.status}</span>
                  <div className="flex gap-2">
                     <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2 bg-slate-900 text-white rounded-lg text-[10px] uppercase font-black hover:bg-black transition-colors">Editar Datos</button>
                  </div>
