@@ -22,9 +22,21 @@ export const IncidencesReported: React.FC<Props> = ({
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   const [filterManager, setFilterManager] = useState('Todos');
 
+  // Estados temporales para el modal de resolución (Quick View)
+  const [tempStatus, setTempStatus] = useState<ComplaintStatus>(ComplaintStatus.PENDIENTE);
+  const [tempResponse, setTempResponse] = useState('');
+
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
   }, []);
+
+  // Sincronizar estados temporales cuando se selecciona una tarjeta
+  useEffect(() => {
+    if (selected) {
+      setTempStatus(selected.status);
+      setTempResponse(selected.managementResponse || '');
+    }
+  }, [selected]);
 
   const isNoCall = (phone: string, name: string) => {
     return noCallList.some(p => p.patientPhone === phone || p.patientName.toLowerCase() === name.toLowerCase());
@@ -40,6 +52,18 @@ export const IncidencesReported: React.FC<Props> = ({
     if (editing) {
       onUpdateFull(editing);
       setEditing(null);
+      setSelected(null);
+    }
+  };
+
+  const handleQuickResolutionSave = () => {
+    if (selected) {
+      onUpdateFull({
+        ...selected,
+        status: tempStatus,
+        managementResponse: tempResponse,
+        resolvedBy: currentUser?.name || 'Administrador'
+      });
       setSelected(null);
     }
   };
@@ -87,7 +111,7 @@ export const IncidencesReported: React.FC<Props> = ({
               <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${c.status === 'Resuelto' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{c.status}</span>
                  <div className="flex gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2 bg-slate-900 text-white rounded-lg text-[10px] uppercase font-black">Editar</button>
+                    <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2 bg-slate-900 text-white rounded-lg text-[10px] uppercase font-black hover:bg-black transition-colors">Editar Datos</button>
                  </div>
               </div>
             </div>
@@ -95,7 +119,6 @@ export const IncidencesReported: React.FC<Props> = ({
         })}
       </div>
 
-      {/* MODAL DE EDICIÓN COMPLETA (RESTAURADO) */}
       {(editing || selected) && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[500] animate-in fade-in">
            <div className="bg-white w-full max-w-2xl p-10 rounded-[2.5rem] shadow-2xl relative overflow-y-auto max-h-[95vh]">
@@ -103,14 +126,13 @@ export const IncidencesReported: React.FC<Props> = ({
               
               <div className="mb-8">
                 <h3 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">
-                   {editing ? 'Modificar Registro Original' : 'Resolución Administrativa'}
+                   {editing ? 'Corregir Datos del Reporte' : 'Resolución de Reclamo'}
                 </h3>
                 <p className="text-amber-600 font-black text-[9px] uppercase tracking-[0.3em] mt-1">Expediente: {(editing || selected)?.id}</p>
               </div>
 
               <div className="space-y-6">
                 {editing ? (
-                  // FORMULARIO DE EDICIÓN COMPLETA
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Nombre Paciente</label>
@@ -143,31 +165,49 @@ export const IncidencesReported: React.FC<Props> = ({
                       </select>
                     </div>
                     <div className="md:col-span-2 space-y-1">
-                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Relato / Queja</label>
+                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Relato de la Queja</label>
                       <textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
                     </div>
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Respuesta / Gestión de Calidad</label>
-                      <textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.managementResponse} onChange={e => setEditing({...editing, managementResponse: e.target.value})} placeholder="Acciones tomadas..." />
-                    </div>
                     <div className="md:col-span-2 flex gap-4 mt-4">
-                      <button onClick={handleFullEditSave} className="flex-1 py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Guardar Cambios</button>
+                      <button onClick={handleFullEditSave} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Guardar Correcciones</button>
                       <button onClick={() => setEditing(null)} className="py-4 px-8 bg-slate-200 text-slate-600 rounded-2xl font-black uppercase text-[10px]">Cancelar</button>
                     </div>
                   </div>
                 ) : (
-                  // VISTA DE RESOLUCIÓN RÁPIDA (MODAL ORIGINAL)
                   <>
                     <div className="w-full bg-amber-50/50 border border-amber-100 rounded-2xl p-5 text-[11px] font-semibold text-slate-700 italic max-h-40 overflow-y-auto">
                        "{selected?.description}"
                     </div>
-                    <div className="flex gap-2">
-                      {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
-                        <button key={s} onClick={() => selected && onUpdateFull({...selected, status: s})} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${selected?.status === s ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>{s}</button>
-                      ))}
+                    <div className="space-y-2">
+                       <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Estado de Gestión</label>
+                       <div className="flex gap-2">
+                         {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
+                           <button 
+                             key={s} 
+                             type="button"
+                             onClick={() => setTempStatus(s)} 
+                             className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${tempStatus === s ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}
+                           >
+                             {s}
+                           </button>
+                         ))}
+                       </div>
                     </div>
-                    <textarea className="w-full bg-slate-50 border rounded-2xl p-5 text-xs font-bold min-h-[120px] outline-none" value={selected?.managementResponse || ''} onChange={e => selected && onUpdateFull({...selected, managementResponse: e.target.value, resolvedBy: currentUser?.name || 'Administrador'})} placeholder="Escriba las acciones tomadas..." />
-                    <button onClick={() => setSelected(null)} className="w-full py-5 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Confirmar Resolución</button>
+                    <div className="space-y-2">
+                       <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Acciones Tomadas / Descargo de la Empresa</label>
+                       <textarea 
+                         className="w-full bg-slate-50 border rounded-2xl p-5 text-xs font-bold min-h-[150px] outline-none focus:ring-2 ring-amber-500" 
+                         value={tempResponse} 
+                         onChange={e => setTempResponse(e.target.value)} 
+                         placeholder="Escriba detalladamente la solución brindada o gestión realizada..." 
+                       />
+                    </div>
+                    <button 
+                      onClick={handleQuickResolutionSave} 
+                      className="w-full py-5 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-amber-600 transition-all"
+                    >
+                      GRABAR RESOLUCIÓN Y CERRAR
+                    </button>
                   </>
                 )}
               </div>

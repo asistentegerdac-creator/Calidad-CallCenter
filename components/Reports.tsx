@@ -15,6 +15,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
+  
+  // Buffer de edición
   const [editing, setEditing] = useState<Complaint | null>(null);
 
   useEffect(() => {
@@ -57,7 +59,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
 
   const handleSaveEdit = () => {
     if (editing) {
-      onUpdateFull(editing);
+      onUpdateFull({
+        ...editing,
+        resolvedBy: currentUser?.name || 'Administrador'
+      });
       setEditing(null);
     }
   };
@@ -155,7 +160,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
                                    </span>
                                 </td>
                                 <td className="py-4 text-right">
-                                   <button onClick={() => setEditing(c)} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase hover:bg-black">Editar Ficha</button>
+                                   <button onClick={() => setEditing({...c})} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase hover:bg-black transition-colors">Editar / Gestionar</button>
                                 </td>
                               </tr>
                             );
@@ -168,13 +173,12 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
          )}
       </div>
 
-      {/* MODAL DE EDICIÓN EN REPORTES */}
       {editing && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[500] animate-in fade-in no-print">
            <div className="bg-white w-full max-w-2xl p-10 rounded-[2.5rem] shadow-2xl relative overflow-y-auto max-h-[95vh]">
               <button onClick={() => setEditing(null)} className="absolute top-6 right-6 text-2xl font-light text-slate-300 hover:text-rose-500 transition-colors">✕</button>
               <div className="mb-8">
-                <h3 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Corregir Datos del Reporte</h3>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Gestión Administrativa de Reporte</h3>
                 <p className="text-amber-600 font-black text-[9px] uppercase tracking-[0.3em] mt-1">Expediente: {editing.id}</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -187,32 +191,32 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
                     <input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} />
                  </div>
                  <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Área</label>
+                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Área del Evento</label>
                     <select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.area} onChange={e => setEditing({...editing, area: e.target.value})}>
                        {areas.map(a => <option key={a} value={a}>{a}</option>)}
                     </select>
                  </div>
                  <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Estado</label>
-                    <select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.status} onChange={e => setEditing({...editing, status: e.target.value as ComplaintStatus})}>
+                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Estado de la Gestión</label>
+                    <select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold border-amber-500" value={editing.status} onChange={e => setEditing({...editing, status: e.target.value as ComplaintStatus})}>
                        {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                  </div>
                  <div className="md:col-span-2 space-y-1">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Relato / Descripción</label>
+                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Relato / Descripción del Problema</label>
                     <textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
                  </div>
                  <div className="md:col-span-2 space-y-1">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Respuesta Administrativa</label>
-                    <textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.managementResponse} onChange={e => setEditing({...editing, managementResponse: e.target.value})} />
+                    <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Solución Aplicada / Descargo Final</label>
+                    <textarea className="w-full p-3 bg-slate-100 border-2 border-amber-200 rounded-xl text-xs font-bold h-32 outline-none focus:ring-2 ring-amber-500" value={editing.managementResponse} onChange={e => setEditing({...editing, managementResponse: e.target.value})} placeholder="Escriba aquí la resolución oficial..." />
                  </div>
-                 <button onClick={handleSaveEdit} className="md:col-span-2 w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl mt-4">Guardar y Actualizar Reporte</button>
+                 <button onClick={handleSaveEdit} className="md:col-span-2 w-full py-5 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl mt-4 hover:bg-amber-600 transition-colors">Guardar Gestión y Actualizar Reporte</button>
               </div>
            </div>
         </div>
       )}
 
-      {/* DISEÑO PROFESIONAL PDF GERENCIAL (Mismo código de impresión) */}
+      {/* DISEÑO PROFESIONAL PDF GERENCIAL */}
       <div className="hidden print:block bg-white font-sans text-slate-900 p-0">
         <style>{`
           @media print {

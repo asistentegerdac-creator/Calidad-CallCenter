@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Complaint, ComplaintStatus, User } from '../types';
 
 interface Props { 
@@ -10,13 +10,21 @@ interface Props {
 
 export const ComplaintList: React.FC<Props> = ({ complaints, onUpdate, currentUser }) => {
   const [selected, setSelected] = useState<Complaint | null>(null);
-  const [response, setResponse] = useState('');
-  const [status, setStatus] = useState<ComplaintStatus>(ComplaintStatus.PENDIENTE);
+  
+  // Estados de buffer para el modal
+  const [localResponse, setLocalResponse] = useState('');
+  const [localStatus, setLocalStatus] = useState<ComplaintStatus>(ComplaintStatus.PENDIENTE);
+
+  // Sincronizar buffer cuando se selecciona un reclamo
+  useEffect(() => {
+    if (selected) {
+      setLocalResponse(selected.managementResponse || '');
+      setLocalStatus(selected.status);
+    }
+  }, [selected]);
 
   const openModal = (c: Complaint) => {
     setSelected(c);
-    setResponse(c.managementResponse || '');
-    setStatus(c.status);
   };
 
   const getPriorityStyle = (p: string) => {
@@ -25,6 +33,13 @@ export const ComplaintList: React.FC<Props> = ({ complaints, onUpdate, currentUs
       case 'Alta': return 'bg-orange-500';
       case 'Media': return 'bg-amber-500';
       default: return 'bg-slate-400';
+    }
+  };
+
+  const handleFinalUpdate = () => {
+    if (selected) {
+      onUpdate(selected.id, localStatus, localResponse, currentUser?.name || 'Administrador');
+      setSelected(null);
     }
   };
 
@@ -99,7 +114,12 @@ export const ComplaintList: React.FC<Props> = ({ complaints, onUpdate, currentUs
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Estado de la Gestión</label>
                 <div className="flex gap-4">
                   {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
-                    <button key={s} onClick={() => setStatus(s)} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${status === s ? 'bg-slate-900 text-white shadow-xl' : 'bg-slate-50 text-slate-400'}`}>
+                    <button 
+                      key={s} 
+                      type="button"
+                      onClick={() => setLocalStatus(s)} 
+                      className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${localStatus === s ? 'bg-slate-900 text-white shadow-xl' : 'bg-slate-50 text-slate-400'}`}
+                    >
                       {s}
                     </button>
                   ))}
@@ -110,14 +130,14 @@ export const ComplaintList: React.FC<Props> = ({ complaints, onUpdate, currentUs
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Conclusión Administrativa / Solución Aplicada</label>
                 <textarea 
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] p-8 text-sm h-40 outline-none focus:border-amber-400 font-bold text-slate-900 transition-all" 
-                  value={response} 
-                  onChange={e => setResponse(e.target.value)} 
+                  value={localResponse} 
+                  onChange={e => setLocalResponse(e.target.value)} 
                   placeholder="Detalle la acción tomada por el equipo de calidad..." 
                 />
               </div>
 
               <button 
-                onClick={() => { onUpdate(selected.id, status, response, currentUser?.name || 'Administrador'); setSelected(null); }}
+                onClick={handleFinalUpdate}
                 className="w-full py-6 neo-warm-button text-white rounded-[2.5rem] font-black uppercase text-[11px] tracking-[0.3em] shadow-xl"
               >
                 FIRMAR Y CERRAR EXPEDIENTE
