@@ -1,5 +1,5 @@
 
-import { Complaint, ComplaintStatus, DailyStat, User, AreaMapping, NoCallPatient } from '../types';
+import { Complaint, DailyStat, User, AreaMapping, NoCallPatient } from '../types';
 
 const hostname = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
 const API_BASE = `http://${hostname}:3008/api`;
@@ -53,7 +53,8 @@ export const dbService = {
   async testConnection(config: any) {
     try {
       const r = await fetch(`${API_BASE}/test-db`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       });
       return { success: r.ok };
@@ -114,7 +115,8 @@ export const dbService = {
   async saveAreaConfig(mapping: AreaMapping) {
     try {
       await fetch(`${API_BASE}/areas-config`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mapping)
       });
     } catch {}

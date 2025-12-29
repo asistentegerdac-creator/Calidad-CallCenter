@@ -44,10 +44,12 @@ export const Settings: React.FC<Props> = ({
   useEffect(() => {
     if (isOnline) {
       const loadData = async () => {
-        const mappings = await dbService.fetchAreasConfig();
-        setAreaMappings(mappings);
-        const remoteUsers = await dbService.fetchUsers();
-        setUsers(remoteUsers);
+        try {
+          const mappings = await dbService.fetchAreasConfig();
+          setAreaMappings(mappings);
+          const remoteUsers = await dbService.fetchUsers();
+          setUsers(remoteUsers);
+        } catch (e) { console.error("Error cargando configuración inicial:", e); }
       };
       loadData();
     }
@@ -94,8 +96,10 @@ export const Settings: React.FC<Props> = ({
 
   const handleDeleteMapping = async (areaName: string) => {
     if (!confirm(`¿Eliminar la jefatura para el área ${areaName}?`)) return;
-    await dbService.deleteAreaConfig(areaName);
-    setAreaMappings(areaMappings.filter(m => m.areaName !== areaName));
+    if (isOnline) {
+      await dbService.deleteAreaConfig(areaName);
+      setAreaMappings(areaMappings.filter(m => m.areaName !== areaName));
+    }
   };
 
   const handleEditMapping = (m: AreaMapping) => {
@@ -221,13 +225,52 @@ export const Settings: React.FC<Props> = ({
             <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Base de Datos</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.database} onChange={e => setDbParams({...dbParams, database: e.target.value})} /></div>
             <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Usuario</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" value={dbParams.user} onChange={e => setDbParams({...dbParams, user: e.target.value})} /></div>
             <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Password</label><input className="w-full bg-slate-800 p-4 rounded-xl text-sm font-bold border-none text-white outline-none" type="password" value={dbParams.password} onChange={e => setDbParams({...dbParams, password: e.target.value})} /></div>
-            <div className="flex items-end"><button onClick={handleTestConnection} disabled={testing} className="w-full bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase">{testing ? 'VINCULANDO...' : 'SINCRONIZAR NODO'}</button></div>
+            <div className="flex items-end">
+              <button onClick={handleTestConnection} disabled={testing} className="w-full bg-amber-500 py-4 rounded-xl font-black text-[10px] uppercase">
+                {testing ? 'VINCULANDO...' : 'SINCRONIZAR NODO'}
+              </button>
+            </div>
+            {connMessage && <div className="col-span-full mt-4 text-[10px] font-black text-center">{connMessage}</div>}
           </div>
         )}
+      </div>
+
+      <div className="glass-card p-10 bg-white shadow-xl border border-slate-50">
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900">Gestión de Auditores</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div className="space-y-4 bg-slate-50 p-8 rounded-[2.5rem]">
+             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
+             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Nombre" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
+             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" type="password" placeholder="Password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+             <button onClick={handleCreateUser} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase">Grabar Auditor</button>
+          </div>
+          <div className="border rounded-[2rem] overflow-hidden">
+             <table className="w-full text-left">
+                <thead className="bg-slate-50 text-[9px] font-black text-slate-400"><tr><th className="px-6 py-4">Usuario</th><th className="px-6 py-4">Acción</th></tr></thead>
+                <tbody className="divide-y">
+                  {users.map(u => (
+                    <tr key={u.id} className="text-[10px] font-black group">
+                      <td className="px-6 py-4">{u.username} <span className="block text-[8px] text-slate-400">{u.name}</span></td>
+                      <td className="px-6 py-4"><button onClick={() => handleDeleteUser(u.id)} className="text-rose-500">×</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+             </table>
+          </div>
+        </div>
       </div>
 
       <div className="glass-card p-10 bg-white">
         <h3 className="text-xl font-black mb-8 uppercase text-slate-900">Personalización</h3>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {themes.map(t => (
-            <button key={t.id} onClick={() => setTheme(t.id)} className={`p-5 rounded-[2rem] border-4 transition-all ${currentTheme ===
+            <button key={t.id} onClick={() => setTheme(t.id)} className={`p-5 rounded-[2rem] border-4 transition-all ${currentTheme === t.id ? 'border-amber-500 bg-amber-50' : 'border-slate-50 opacity-60'}`}>
+              <div className="w-full h-10 rounded-xl mb-3" style={{ background: t.color }}></div>
+              <p className="text-[9px] font-black uppercase text-center">{t.name}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
