@@ -20,7 +20,7 @@ export interface Complaint {
   doctorName?: string;
   specialty: string;
   area: string;
-  managerName?: string; // Jefe asignado automáticamente
+  managerName?: string; 
   description: string;
   status: ComplaintStatus;
   priority: Priority;
@@ -41,6 +41,15 @@ export interface DailyStat {
   date: string;
   patients_attended: number;
   patients_called: number;
+  calls_unanswered: number;
+}
+
+export interface NoCallPatient {
+  id: string;
+  patientName: string;
+  patientPhone: string;
+  reason?: string;
+  registeredAt: string;
 }
 
 export interface User {
@@ -52,4 +61,4 @@ export interface User {
   permissions: string[];
 }
 
-export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'settings';
+export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'settings' | 'no-call';
