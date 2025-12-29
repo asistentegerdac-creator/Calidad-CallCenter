@@ -6,18 +6,21 @@ import { dbService } from '../services/apiService';
 interface Props { 
   complaints: Complaint[]; 
   areas: string[]; 
+  specialties: string[];
   onUpdateFull: (c: Complaint) => void;
   currentUser: User | null;
 }
 
-export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, currentUser }) => {
+export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, currentUser }) => {
   const [filterManager, setFilterManager] = useState('Todos');
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
   const [dateFrom, setDateFrom] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
+  
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
-  const [editing, setEditing] = useState<Complaint | null>(null);
+  const [editing, setEditing] = useState<Complaint | null>(null); // Edición de cabecera
+  const [resolving, setResolving] = useState<Complaint | null>(null); // Resolución rápida
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -45,6 +48,16 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
       .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
   }, [complaints, filterManager, filterArea, filterStatus, dateFrom, dateTo]);
 
+  const groupedByManager = useMemo(() => {
+    const groups: Record<string, Complaint[]> = {};
+    filtered.forEach(c => {
+      const boss = c.managerName || 'SIN JEFE ASIGNADO';
+      if (!groups[boss]) groups[boss] = [];
+      groups[boss].push(c);
+    });
+    return groups;
+  }, [filtered]);
+
   const stats = useMemo(() => {
     const total = filtered.length;
     const resueltos = filtered.filter(c => c.status === ComplaintStatus.RESUELTO).length;
@@ -54,48 +67,92 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
     return { total, resueltos, activos, criticas, satisfaction };
   }, [filtered]);
 
+  // Generador de Excel con formato Real (Usa HTML Table con MIME de Excel)
   const exportExcel = () => {
-    const title = `INFORME GERENCIAL DAC - PERIODO ${dateFrom} AL ${dateTo}`;
-    const headers = ["ESTADO", "PRIORIDAD", "ID", "FECHA", "PACIENTE", "ALERTA", "AREA", "ESPECIALIDAD", "MEDICO", "JEFE", "QUEJA", "RESOLUCION", "NOTA", "AUDITOR"];
-    const rows = filtered.map(c => [
-      c.status.toUpperCase(), c.priority.toUpperCase(), c.id, c.date, c.patientName.toUpperCase(),
-      isNoCall(c.patientPhone, c.patientName) ? "NO LLAMAR" : "OK",
-      c.area.toUpperCase(), (c.specialty || 'N/A').toUpperCase(), (c.doctorName || 'N/A').toUpperCase(),
-      (c.managerName || 'N/A').toUpperCase(), `"${c.description.replace(/"/g, '""')}"`,
-      `"${(c.managementResponse || '').replace(/"/g, '""')}"`, c.satisfaction, (c.resolvedBy || '').toUpperCase()
-    ]);
-    const csvContent = "\ufeff" + title + "\n\n" + headers.join(";") + "\n" + rows.map(e => e.join(";")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const tableHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          .header { background-color: #1a237e; color: white; font-weight: bold; font-size: 16pt; text-align: center; }
+          .title { background-color: #ad1457; color: white; font-weight: bold; text-align: left; }
+          .th { background-color: #eeeeee; border: 0.5pt solid #000000; font-weight: bold; }
+          .td { border: 0.5pt solid #cccccc; }
+          .pending { color: #f97316; font-weight: bold; }
+          .resolved { color: #10b981; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr><td colspan="10" class="header">DASHBOARD DE GESTIÓN DE CALIDAD DAC</td></tr>
+          <tr><td colspan="10">Periodo: ${dateFrom} al ${dateTo} | Generado: ${new Date().toLocaleString()}</td></tr>
+          <tr></tr>
+          <tr><td colspan="2" class="th">Total Casos</td><td class="td">${stats.total}</td><td colspan="2" class="th">Satisfacción</td><td class="td">${stats.satisfaction}</td></tr>
+          <tr></tr>
+          <tr>
+            <th class="th">ESTADO</th><th class="th">PRIORIDAD</th><th class="th">ID</th><th class="th">FECHA</th>
+            <th class="th">PACIENTE</th><th class="th">AREA</th><th class="th">MEDICO</th><th class="th">JEFE</th>
+            <th class="th">RECLAMO</th><th class="th">RESOLUCION</th>
+          </tr>
+          ${filtered.map(c => `
+            <tr>
+              <td class="td ${c.status === 'Resuelto' ? 'resolved' : 'pending'}">${c.status.toUpperCase()}</td>
+              <td class="td">${c.priority}</td>
+              <td class="td">${c.id}</td>
+              <td class="td">${c.date}</td>
+              <td class="td">${c.patientName}</td>
+              <td class="td">${c.area}</td>
+              <td class="td">${c.doctorName || 'N/A'}</td>
+              <td class="td">${c.managerName || 'N/A'}</td>
+              <td class="td">${c.description}</td>
+              <td class="td">${c.managementResponse || ''}</td>
+            </tr>
+          `).join('')}
+        </table>
+      </body>
+      </html>
+    `;
+    const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `REPORTE_DAC_GERENCIAL_${dateFrom}_${dateTo}.csv`;
+    link.download = `REPORTE_GERENCIAL_DAC.xls`;
     link.click();
+  };
+
+  const handleSave = () => {
+    const data = editing || resolving;
+    if (data) {
+      onUpdateFull({ ...data, resolvedBy: currentUser?.name || 'Admin' });
+      setEditing(null);
+      setResolving(null);
+    }
   };
 
   return (
     <div className="space-y-10 pb-20 animate-in fade-in duration-500">
+      {/* PANEL DE CONTROL NO-IMPRIMIBLE */}
       <div className="glass-card p-10 bg-white shadow-xl no-print border border-slate-100">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 mb-10">
             <div className="space-y-2">
               <h3 className="text-2xl font-black uppercase text-slate-900 tracking-tight flex items-center gap-3">
-                 <span className="w-10 h-10 bg-slate-900 rounded-2xl flex items-center justify-center text-white text-lg">📊</span>
-                 Dashboard de Inteligencia Gerencial
+                 <span className="w-10 h-10 bg-indigo-900 rounded-2xl flex items-center justify-center text-white text-lg">📊</span>
+                 Reportes y Auditoría Hospitalaria
               </h3>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Generación de documentación oficial bajo estándares de calidad</p>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Filtre y genere documentos con validez oficial</p>
             </div>
             <div className="flex flex-wrap gap-4">
-               <button onClick={exportExcel} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">Exportar a Excel</button>
-               <button onClick={() => window.print()} className="px-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">Imprimir Informe PDF</button>
+               <button onClick={exportExcel} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📘 EXCEL PROFESIONAL</button>
+               <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
             </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rango Inicio</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Desde</label>
             <input type="date" className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rango Final</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Hasta</label>
             <input type="date" className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -113,156 +170,200 @@ export const Reports: React.FC<Props> = ({ complaints, areas, onUpdateFull, curr
             </select>
           </div>
           <div className="space-y-1">
-             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Resultados</label>
-             <div className="p-4 bg-slate-900 text-white rounded-xl font-black text-center text-sm">{filtered.length} CASOS</div>
+             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Total</label>
+             <div className="p-4 bg-indigo-900 text-white rounded-xl font-black text-center text-sm">{filtered.length} CASOS</div>
           </div>
         </div>
       </div>
 
-      {/* VISTA PREVIA PROFESIONAL EN PANTALLA */}
-      <div className="space-y-8 no-print">
-         {filtered.length > 0 ? (
-           <div className="grid grid-cols-1 gap-6">
-             {filtered.map(c => (
-                <div key={c.id} className="glass-card bg-white p-8 border-l-8 hover:shadow-xl transition-all" style={{ borderLeftColor: c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981' }}>
-                   <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase">{c.id} | {c.date}</span>
-                        <h4 className="text-xl font-black text-slate-900 uppercase mt-1">{c.patientName}</h4>
-                      </div>
-                      <span className={`px-4 py-2 rounded-xl text-[10px] font-black text-white uppercase ${c.status === 'Pendiente' ? 'bg-orange-500' : c.status === 'En Proceso' ? 'bg-blue-600' : 'bg-emerald-500'}`}>
-                        {c.status}
-                      </span>
-                   </div>
-                   <div className="mt-6 flex gap-10">
-                      <div className="flex-1">
-                         <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Descripción del Evento</p>
-                         <p className="text-sm text-slate-600 italic font-medium leading-relaxed">"{c.description}"</p>
-                      </div>
-                      <div className="flex-1 bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                         <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Gestión de Calidad / Resolución</p>
-                         <p className="text-sm text-slate-900 font-bold">{c.managementResponse || 'En espera de resolución administrativa...'}</p>
-                      </div>
-                   </div>
-                </div>
-             ))}
-           </div>
-         ) : (
-           <div className="text-center py-32 glass-card bg-white border-dashed border-2">
-              <p className="text-slate-400 font-black uppercase text-xs">No se encontraron incidencias en este rango</p>
-           </div>
-         )}
+      {/* LISTA AGRUPADA POR JEFATURA (VISTA RESTAURADA) */}
+      <div className="space-y-10 no-print">
+        {/* Fix: Explicitly type entries to avoid 'unknown' inference for 'items' */}
+        {(Object.entries(groupedByManager) as [string, Complaint[]][]).map(([manager, items]) => (
+          <div key={manager} className="glass-card bg-white p-8 border border-slate-100 shadow-md">
+            <h4 className="font-black text-indigo-900 text-sm uppercase mb-6 flex items-center gap-2">
+              <span className="w-1.5 h-5 bg-amber-500 rounded-full"></span>
+              JEFATURA: <span className="text-amber-600 ml-2">{manager}</span>
+            </h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-[9px] font-black text-slate-400 uppercase border-b pb-4">
+                    <th className="pb-4" style={{ width: '15%' }}>FECHA / ID</th>
+                    <th className="pb-4" style={{ width: '20%' }}>PACIENTE / ALERTA</th>
+                    <th className="pb-4" style={{ width: '30%' }}>DESCRIPCIÓN RECLAMO</th>
+                    <th className="pb-4" style={{ width: '15%' }}>ESTADO</th>
+                    <th className="pb-4 text-right" style={{ width: '20%' }}>ACCIONES</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {items.map(c => (
+                    <tr key={c.id} onClick={() => setResolving({...c})} className="hover:bg-slate-50 cursor-pointer transition-colors group">
+                      <td className="py-4">
+                        <p className="font-black text-slate-900 text-[11px]">{c.date}</p>
+                        <p className="text-[8px] text-slate-400 font-bold">{c.id}</p>
+                      </td>
+                      <td className="py-4">
+                        <p className="font-black text-slate-900 uppercase text-[11px]">{c.patientName}</p>
+                        {isNoCall(c.patientPhone, c.patientName) && <span className="text-rose-600 text-[7px] font-black border border-rose-200 px-1 rounded">📵 NO LLAMAR</span>}
+                      </td>
+                      <td className="py-4">
+                        <p className="text-[10px] text-slate-500 line-clamp-2 italic">"{c.description}"</p>
+                      </td>
+                      <td className="py-4">
+                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase ${
+                          c.status === 'Resuelto' ? 'bg-emerald-100 text-emerald-700' :
+                          c.status === 'En Proceso' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                        }`}>
+                          {c.status}
+                        </span>
+                      </td>
+                      <td className="py-4 text-right">
+                         <button onClick={(e) => { e.stopPropagation(); setEditing({...c}); }} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase hover:bg-amber-600 transition-colors">Editar Datos</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* DISEÑO DE INFORME PDF DE ALTO NIVEL (MIMETIZANDO LA IMAGEN) */}
+      {/* MODAL EDICIÓN MAESTRA (EDITAR DATOS) */}
+      {editing && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
+          <div className="bg-white w-full max-w-2xl p-10 rounded-[2.5rem] shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setEditing(null)} className="absolute top-6 right-6 text-2xl text-slate-300">✕</button>
+            <h3 className="text-2xl font-black text-slate-900 uppercase mb-8">Edición Maestra de Registro</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Nombre Paciente</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.patientName} onChange={e => setEditing({...editing, patientName: e.target.value})} /></div>
+              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Médico Responsable</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} /></div>
+              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Área</label><select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.area} onChange={e => setEditing({...editing, area: e.target.value})}>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
+              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Especialidad</label><select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.specialty} onChange={e => setEditing({...editing, specialty: e.target.value})}>{specialties.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div className="col-span-2 space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Reclamo Original</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} /></div>
+              <button onClick={handleSave} className="col-span-2 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Guardar Cambios Maestros</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RESOLUCIÓN RÁPIDA (CLIC EN LÍNEA) */}
+      {resolving && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
+          <div className="bg-white w-full max-w-lg p-10 rounded-[2.5rem] shadow-2xl relative">
+            <button onClick={() => setResolving(null)} className="absolute top-6 right-6 text-2xl text-slate-300">✕</button>
+            <h3 className="text-xl font-black text-slate-900 uppercase mb-4">Resolución de Incidencia</h3>
+            <p className="text-[10px] text-slate-400 font-bold mb-6 italic">"{resolving.description}"</p>
+            <div className="space-y-6">
+              <div className="flex gap-2">
+                {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
+                  <button key={s} onClick={() => setResolving({...resolving, status: s})} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${resolving.status === s ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>{s}</button>
+                ))}
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Descargo / Solución Aplicada</label>
+                <textarea className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-bold h-32 outline-none focus:ring-2 ring-amber-500" value={resolving.managementResponse} onChange={e => setResolving({...resolving, managementResponse: e.target.value})} placeholder="Escriba la gestión realizada..." />
+              </div>
+              <button onClick={handleSave} className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Finalizar Gestión</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DISEÑO PDF DASHBOARD REAL (PARA IMPRESIÓN) */}
       <div className="hidden print:block bg-white text-slate-900 font-sans p-0 m-0">
          <style>{`
            @media print {
              @page { size: portrait; margin: 0; }
-             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Plus Jakarta Sans', sans-serif; background: #fff; }
-             .p-container { padding: 40px; }
-             .header-nav { background: #1a237e !important; color: white !important; padding: 25px; text-align: center; }
-             .header-nav h1 { margin: 0; font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
-             .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 15px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
-             .kpi-box { text-align: center; }
-             .kpi-box p.val { font-size: 26px; font-weight: 800; margin: 0; color: #1a237e; }
-             .kpi-box p.lab { font-size: 8px; font-weight: 800; margin: 2px 0; color: #666; text-transform: uppercase; line-height: 1; }
-             .section-title { background: #ad1457 !important; color: white !important; padding: 10px 20px; font-size: 14px; font-weight: 800; text-transform: uppercase; margin-top: 25px; }
-             table { width: 100%; border-collapse: collapse; margin-top: 5px; border: 1px solid #ddd; }
-             th { background: #f5f5f5; text-align: left; padding: 10px; font-size: 9px; font-weight: 800; border-bottom: 1px solid #333; }
-             td { padding: 10px; border-bottom: 1px solid #eee; font-size: 9px; vertical-align: top; }
-             .break-avoid { break-inside: avoid; }
-             .footer-sig { margin-top: 100px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px; padding: 0 50px; text-align: center; }
-             .sig-line { border-top: 1px solid #000; padding-top: 10px; font-size: 10px; font-weight: 800; }
+             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+             .pdf-header { background: #1a237e !important; color: white !important; padding: 30px; text-align: center; }
+             .pdf-header h1 { margin: 0; font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
+             .pdf-header p { font-size: 10px; margin-top: 5px; opacity: 0.8; font-weight: 700; }
+             
+             .pdf-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 20px 40px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
+             .pdf-kpi-box { text-align: center; }
+             .pdf-kpi-box .val { font-size: 26px; font-weight: 900; color: #1a237e; margin: 0; }
+             .pdf-kpi-box .lab { font-size: 8px; font-weight: 800; color: #666; text-transform: uppercase; line-height: 1.1; margin-top: 4px; }
+
+             .pdf-section-title { background: #ad1457 !important; color: white !important; padding: 10px 20px; font-size: 12px; font-weight: 800; text-transform: uppercase; margin: 30px 0 10px; }
+             
+             .pdf-table { width: 100%; border-collapse: collapse; margin: 0 0 30px; }
+             .pdf-table th { background: #f5f5f5; text-align: left; padding: 10px 8px; font-size: 9px; font-weight: 800; border-bottom: 2px solid #000; text-transform: uppercase; }
+             .pdf-table td { padding: 8px; border-bottom: 1px solid #eee; font-size: 9px; vertical-align: top; }
+             
+             .break-avoid { break-inside: avoid; page-break-inside: avoid; }
+             .pdf-footer { margin-top: 100px; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; padding: 0 100px; text-align: center; }
+             .pdf-sig { border-top: 1.5px solid #000; padding-top: 10px; font-size: 10px; font-weight: 800; }
            }
          `}</style>
 
-         {/* CABECERA AZUL MARINO */}
-         <div className="header-nav">
-            <h1>INFORME GERENCIAL DE CALIDAD DAC</h1>
-            <p style={{fontSize:'10px', fontWeight: 'bold', marginTop:'5px', opacity:0.8}}>PERIODO DE GESTIÓN: {dateFrom} AL {dateTo}</p>
+         <div className="pdf-header">
+            <h1>Customer Service Dashboard - DAC Hospitalario</h1>
+            <p>GESTIÓN DE CALIDAD Y CONTROL DE INCIDENCIAS | PERIODO: {dateFrom} AL {dateTo}</p>
          </div>
 
-         <div className="p-container">
-            {/* KPI ROW IGUAL A LA IMAGEN */}
-            <div className="kpi-row">
-               <div className="kpi-box"><p className="val">{stats.total}</p><p className="lab">Incidencias<br/>Reportadas</p></div>
-               <div className="kpi-box"><p className="val">{stats.resueltos}</p><p className="lab">Casos<br/>Cerrados</p></div>
-               <div className="kpi-box"><p className="val">{stats.activos}</p><p className="lab">Pendientes<br/>de Gestión</p></div>
-               <div className="kpi-box"><p className="val">{stats.criticas}</p><p className="lab">Alertas<br/>Críticas</p></div>
-               <div className="kpi-box"><p className="val">{stats.satisfaction}</p><p className="lab">Nivel de<br/>Satisfacción (5.0)</p></div>
-               <div className="kpi-box"><p className="val">{((stats.resueltos/(stats.total||1))*100).toFixed(0)}%</p><p className="lab">Tasa de<br/>Resolución</p></div>
-            </div>
+         <div className="pdf-kpi-row">
+            <div className="pdf-kpi-box"><p className="val">{stats.total}</p><p className="lab">Incidencias<br/>Reportadas</p></div>
+            <div className="pdf-kpi-box"><p className="val">{stats.resueltos}</p><p className="lab">Casos<br/>Cerrados</p></div>
+            <div className="pdf-kpi-box"><p className="val">{stats.activos}</p><p className="lab">Casos<br/>en Gestión</p></div>
+            <div className="pdf-kpi-box"><p className="val">{stats.criticas}</p><p className="lab">Alertas<br/>Críticas</p></div>
+            <div className="pdf-kpi-box"><p className="val">{stats.satisfaction}</p><p className="lab">Rating<br/>Satisfacción</p></div>
+            <div className="pdf-kpi-box"><p className="val">{((stats.resueltos/(stats.total||1))*100).toFixed(0)}%</p><p className="lab">Eficiencia<br/>DAC</p></div>
+         </div>
 
-            {/* SECCIÓN PENDIENTES (COLOR MARRÓN) */}
-            <div className="section-title">Detalle de Incidencias Prioritarias (Pendientes / Proceso)</div>
-            <table>
+         <div style={{ padding: '0 40px' }}>
+            <div className="pdf-section-title">Análisis de Casos Pendientes y en Proceso</div>
+            <table className="pdf-table">
                <thead>
                   <tr>
-                     <th width="12%">FECHA / ID</th>
-                     <th width="18%">PACIENTE / TEL.</th>
-                     <th width="18%">ÁREA / JEFATURA</th>
-                     <th width="35%">RELATO DEL PACIENTE</th>
-                     <th width="10%">ESTADO</th>
-                     <th width="7%">PRIO.</th>
+                     <th style={{ width: '15%' }}>FECHA / ID</th>
+                     <th style={{ width: '20%' }}>PACIENTE / CONTACTO</th>
+                     <th style={{ width: '20%' }}>ÁREA / JEFATURA</th>
+                     <th style={{ width: '35%' }}>RELATO DE INCIDENCIA</th>
+                     <th style={{ width: '10%' }}>ESTADO</th>
                   </tr>
                </thead>
                <tbody>
                   {filtered.filter(c => c.status !== ComplaintStatus.RESUELTO).map(c => (
                     <tr key={c.id} className="break-avoid">
                        <td><b>{c.date}</b><br/>{c.id}</td>
-                       <td><b className="uppercase">{c.patientName}</b><br/>{c.patientPhone} {isNoCall(c.patientPhone, c.patientName) ? "(RESTRICTO)" : ""}</td>
+                       <td><b className="uppercase">{c.patientName}</b><br/>{c.patientPhone}</td>
                        <td><b>{c.area}</b><br/>{c.managerName || 'Sin Jefe'}</td>
                        <td className="italic text-slate-500">"{c.description}"</td>
-                       <td><b>{c.status.toUpperCase()}</b></td>
-                       <td style={{color: c.priority === 'Crítica' ? 'red' : 'inherit'}}><b>{c.priority}</b></td>
+                       <td style={{ color: c.status === 'Pendiente' ? '#f97316' : '#2563eb', fontWeight: 900 }}>{c.status.toUpperCase()}</td>
                     </tr>
                   ))}
                </tbody>
             </table>
 
-            {/* SECCIÓN RESUELTOS */}
-            <div className="section-title">Histórico de Casos Resueltos en el Periodo</div>
-            <table>
+            <div className="pdf-section-title" style={{ background: '#333 !important' }}>Histórico de Resoluciones Cerradas</div>
+            <table className="pdf-table">
                <thead>
                   <tr>
-                     <th width="15%">PACIENTE / ID</th>
-                     <th width="15%">ÁREA / MÉDICO</th>
-                     <th width="35%">RESOLUCIÓN ADMINISTRATIVA</th>
-                     <th width="15%">AUDITOR</th>
-                     <th width="10%">FECHA</th>
-                     <th width="10%">SAT.</th>
+                     <th style={{ width: '15%' }}>ID / PACIENTE</th>
+                     <th style={{ width: '20%' }}>ÁREA / MÉDICO</th>
+                     <th style={{ width: '45%' }}>RESOLUCIÓN Y DESCARGO DAC</th>
+                     <th style={{ width: '12%' }}>AUDITOR</th>
+                     <th style={{ width: '8%' }}>NOTA</th>
                   </tr>
                </thead>
                <tbody>
                   {filtered.filter(c => c.status === ComplaintStatus.RESUELTO).map(c => (
                     <tr key={c.id} className="break-avoid">
-                       <td><b className="uppercase">{c.patientName}</b><br/>{c.id}</td>
+                       <td><b>{c.id}</b><br/><span className="uppercase">{c.patientName}</span></td>
                        <td><b>{c.area}</b><br/>Dr. {c.doctorName || 'N/A'}</td>
-                       <td><p className="font-bold text-slate-800">"{c.managementResponse}"</p></td>
+                       <td><p className="font-bold">"{c.managementResponse}"</p></td>
                        <td>{c.resolvedBy || 'Central'}</td>
-                       <td>{c.date}</td>
-                       <td><b>{c.satisfaction}/5</b></td>
+                       <td style={{textAlign:'center'}}><b>{c.satisfaction}/5</b></td>
                     </tr>
                   ))}
                </tbody>
             </table>
 
-            {/* RESUMEN ESTADÍSTICO FINAL */}
-            <div style={{pageBreakBefore: 'always'}} className="p-container">
-               <div className="section-title" style={{textAlign: 'center', background: '#333 !important'}}>Cuadro de Firmas y Auditoría Interna</div>
-               
-               <div className="footer-sig">
-                  <div className="sig-line">AUDITORÍA DE CALIDAD DAC</div>
-                  <div className="sig-line">DIRECCIÓN MÉDICA HOSPITALARIA</div>
-               </div>
-
-               <div style={{marginTop: '100px', padding: '40px', background:'#f9f9f9', border:'1px solid #eee', borderRadius:'20px'}}>
-                  <h2 style={{fontSize:'12px', fontWeight:'900', textAlign:'center', textTransform:'uppercase', borderBottom:'1px solid #333', paddingBottom:'10px', marginBottom:'20px'}}>Nota del Sistema</h2>
-                  <p style={{fontSize:'10px', lineHeight:'1.5', textAlign:'justify'}}>
-                    Este documento ha sido generado automáticamente por el Sistema de Gestión de Calidad DAC v8.0. La información aquí presentada refleja fielmente los registros capturados durante el periodo comprendido entre el {dateFrom} y el {dateTo}. La exactitud de las resoluciones recae sobre los auditores firmantes y el Nodo Postgres centralizado. Queda prohibida la reproducción parcial o total sin autorización de la Dirección General.
-                  </p>
-               </div>
+            <div className="pdf-footer break-avoid">
+               <div className="pdf-sig">Firma de Auditoría de Calidad DAC</div>
+               <div className="pdf-sig">Firma de Dirección Médica</div>
             </div>
          </div>
       </div>

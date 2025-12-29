@@ -109,7 +109,7 @@ export const IncidencesReported: React.FC<Props> = ({
               <div className="mb-4">
                 <div className="flex justify-between items-start">
                   <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600' : 'bg-slate-800'}`}>{c.priority}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
                 </div>
                 <h4 className="text-xl font-black text-slate-900 leading-tight mt-2 group-hover:text-orange-600 transition-colors uppercase">{c.patientName}</h4>
                 <p className="text-[10px] font-bold text-slate-400 mt-1">{c.date}</p>
