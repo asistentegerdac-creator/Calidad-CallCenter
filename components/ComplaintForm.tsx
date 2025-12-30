@@ -1,12 +1,17 @@
 
-import React, { useState, useEffect } from 'react';
-import { Complaint, ComplaintStatus, Priority } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Complaint, ComplaintStatus, Priority, NoCallPatient } from '../types';
 import { analyzeComplaint } from '../services/geminiService';
 import { dbService } from '../services/apiService';
 
-interface Props { areas: string[]; specialties: string[]; onAdd: (c: Complaint) => void; }
+interface Props { 
+  areas: string[]; 
+  specialties: string[]; 
+  onAdd: (c: Complaint) => void;
+  noCallList: NoCallPatient[];
+}
 
-export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) => {
+export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCallList }) => {
   const [loading, setLoading] = useState(false);
   const [mappings, setMappings] = useState<any[]>([]);
   
@@ -22,7 +27,6 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
     dbService.fetchAreasConfig().then(setMappings);
   }, []);
 
-  // Sincronización automática de Jefatura cuando cambia el Área
   useEffect(() => {
     const map = mappings.find(m => m.areaName === formData.area);
     if (map) {
@@ -31,6 +35,15 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
       setFormData(prev => ({ ...prev, managerName: '' }));
     }
   }, [formData.area, mappings]);
+
+  // Alerta de Lista Negra en tiempo real
+  const isOnNoCallList = useMemo(() => {
+    if (!formData.patientPhone && !formData.patientName) return false;
+    return noCallList.some(p => 
+      (formData.patientPhone && p.patientPhone === formData.patientPhone) || 
+      (formData.patientName && p.patientName.toLowerCase() === formData.patientName.toLowerCase())
+    );
+  }, [formData.patientPhone, formData.patientName, noCallList]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +63,17 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
 
   return (
     <div className="glass-card bg-white p-6 md:p-12 border-orange-100 shadow-2xl relative overflow-hidden">
+      {/* ALERTA DE SEGURIDAD LISTA NEGRA */}
+      {isOnNoCallList && (
+        <div className="mb-8 bg-rose-600 p-6 rounded-[2rem] border-4 border-rose-300 animate-pulse shadow-[0_0_30px_rgba(225,29,72,0.4)] flex items-center gap-6">
+           <div className="text-4xl">🚫</div>
+           <div>
+              <h4 className="text-white font-black uppercase text-lg leading-none">Alerta de Seguridad DAC</h4>
+              <p className="text-rose-100 font-bold text-[10px] uppercase mt-1 tracking-widest">Este paciente está registrado en la lista de NO LLAMAR. Proceda con extrema precaución.</p>
+           </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 mb-10">
         <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white text-xl">📋</div>
         <div>
@@ -70,34 +94,27 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-
-          {/* Especialidad solo visible si el área contiene 'Consulta' */}
-          {(formData.area.toLowerCase().includes('consulta')) ? (
-            <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
-              <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad Médica</label>
-              <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}>
-                {specialties.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          ) : null}
-
           <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe Responsable (Automático)</label>
-            <input disabled className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-black text-sm text-amber-600" value={formData.managerName || 'SIN JEFE ASIGNADO'} />
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe Responsable (Auto)</label>
+            <input disabled className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-black text-sm text-amber-600" value={formData.managerName || 'SIN ASIGNAR'} />
           </div>
           <div className="space-y-1 md:col-span-2">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre del Paciente</label>
-            <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} placeholder="Nombre completo del usuario" />
+            <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} placeholder="Nombre completo..." />
           </div>
           <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Médico / Personal Involucrado</label>
-            <input className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.doctorName} onChange={e => setFormData({...formData, doctorName: e.target.value})} placeholder="Nombre del médico (opcional)" />
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Teléfono / Celular</label>
+            <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientPhone} onChange={e => setFormData({...formData, patientPhone: e.target.value})} placeholder="Número de contacto..." />
+          </div>
+          <div className="space-y-1 md:col-span-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Médico / Personal</label>
+            <input className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.doctorName} onChange={e => setFormData({...formData, doctorName: e.target.value})} placeholder="Dr. Nombre..." />
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Relato de la Incidencia / Sugerencia</label>
-          <textarea required className="w-full bg-slate-50 border rounded-2xl p-6 font-bold text-sm h-32 focus:ring-2 ring-amber-500 outline-none transition-all" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Describa detalladamente lo ocurrido..." />
+          <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Relato de la Incidencia</label>
+          <textarea required className="w-full bg-slate-50 border rounded-2xl p-6 font-bold text-sm h-32 focus:ring-2 ring-amber-500 outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Describa detalladamente lo ocurrido..." />
         </div>
 
         <div className="flex flex-col md:flex-row gap-8 items-center justify-between p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
@@ -105,14 +122,14 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd }) =>
             <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Grado de Satisfacción</label>
             <div className="flex gap-2">
                {[1,2,3,4,5].map(n => (
-                 <button type="button" key={n} onClick={() => setFormData({...formData, satisfaction: n})} className={`w-12 h-12 rounded-xl font-black text-lg transition-all ${formData.satisfaction >= n ? 'bg-amber-500 text-white shadow-lg scale-110' : 'bg-white text-slate-300'}`}>
+                 <button type="button" key={n} onClick={() => setFormData({...formData, satisfaction: n})} className={`w-12 h-12 rounded-xl font-black text-lg transition-all ${formData.satisfaction >= n ? 'bg-amber-500 text-white shadow-lg' : 'bg-white text-slate-300'}`}>
                    {n}
                  </button>
                ))}
             </div>
           </div>
-          <button disabled={loading} className="w-full md:w-auto px-16 py-6 neo-warm-button rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-2xl hover:scale-105 transition-all disabled:opacity-50">
-            {loading ? 'ANALIZANDO CON IA...' : 'GRABAR REPORTE'}
+          <button disabled={loading} className="w-full md:w-auto px-16 py-6 neo-warm-button rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-2xl disabled:opacity-50">
+            {loading ? 'ANALIZANDO...' : 'GRABAR REPORTE'}
           </button>
         </div>
       </form>

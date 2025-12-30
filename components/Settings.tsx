@@ -29,6 +29,7 @@ export const Settings: React.FC<Props> = ({
   const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
   const [newMapping, setNewMapping] = useState({ area: '', manager: '' });
   const [newUser, setNewUser] = useState({ id: '', username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' });
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({ type: 'area', value: '' });
 
   const [dbParams, setDbParams] = useState({
@@ -173,7 +174,7 @@ export const Settings: React.FC<Props> = ({
     setNewMapping({ area: m.areaName, manager: m.managerName });
   };
 
-  const handleCreateUser = async () => {
+  const handleCreateOrUpdateUser = async () => {
     if (!newUser.username || !newUser.password) return;
     const userToSave: User = { 
       ...newUser, 
@@ -181,12 +182,35 @@ export const Settings: React.FC<Props> = ({
       permissions: ['dashboard'] 
     };
     if (isOnline) {
-      await dbService.saveUser(userToSave);
-      const updatedUsers = await dbService.fetchUsers();
-      setUsers(updatedUsers);
-      setNewUser({ id: '', username: '', name: '', password: '', role: 'agent' });
-      alert("Auditor registrado.");
+      const ok = await dbService.saveUser(userToSave);
+      if (ok) {
+        const updatedUsers = await dbService.fetchUsers();
+        setUsers(updatedUsers);
+        setNewUser({ id: '', username: '', name: '', password: '', role: 'agent' });
+        setEditingUserId(null);
+        alert(editingUserId ? "Auditor actualizado correctamente." : "Auditor registrado correctamente.");
+      } else {
+        alert("Error al procesar el usuario en el Nodo Postgres.");
+      }
+    } else {
+      alert("Debe estar conectado al Nodo para gestionar usuarios.");
     }
+  };
+
+  const handleEditUser = (u: User) => {
+    setEditingUserId(u.id);
+    setNewUser({
+      id: u.id,
+      username: u.username,
+      name: u.name,
+      password: u.password || '',
+      role: u.role
+    });
+  };
+
+  const handleCancelUserEdit = () => {
+    setEditingUserId(null);
+    setNewUser({ id: '', username: '', name: '', password: '', role: 'agent' });
   };
 
   const handleDeleteUser = async (userId: string) => {
@@ -350,24 +374,58 @@ export const Settings: React.FC<Props> = ({
 
       {/* GESTIÓN DE AUDITORES */}
       <div className="glass-card p-10 bg-white shadow-xl border border-slate-50">
-        <h3 className="text-xl font-black mb-8 uppercase text-slate-900">Gestión de Auditores</h3>
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
+          <span className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white text-sm">👥</span>
+          Gestión de Auditores
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          <div className="space-y-4 bg-slate-50 p-8 rounded-[2.5rem]">
-             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Usuario" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
-             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Nombre Completo" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
-             <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" type="password" placeholder="Contraseña" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
-             <button onClick={handleCreateUser} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase shadow-md">Registrar Auditor</button>
+          <div className="space-y-4 bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100">
+             <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Usuario (Login)</label>
+                <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Ejem: mgarcia" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
+             </div>
+             <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Nombre Completo</label>
+                <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" placeholder="Ej: Mario García" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
+             </div>
+             <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Contraseña</label>
+                <input className="w-full p-4 bg-white border rounded-xl text-xs font-bold" type="password" placeholder="********" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+             </div>
+             <div className="flex gap-2">
+                <button onClick={handleCreateOrUpdateUser} className={`flex-1 py-4 text-white rounded-xl font-black text-[10px] uppercase shadow-md transition-all ${editingUserId ? 'bg-amber-500' : 'bg-slate-900'}`}>
+                  {editingUserId ? 'Actualizar Auditor' : 'Registrar Auditor'}
+                </button>
+                {editingUserId && (
+                  <button onClick={handleCancelUserEdit} className="px-6 py-4 bg-slate-200 text-slate-600 rounded-xl font-black text-[10px] uppercase">Cancelar</button>
+                )}
+             </div>
           </div>
-          <div className="border rounded-[2rem] overflow-hidden">
+          <div className="border rounded-[2rem] overflow-hidden bg-white shadow-inner">
              <table className="w-full text-left">
-                <thead className="bg-slate-50 text-[9px] font-black text-slate-400"><tr><th className="px-6 py-4">Auditor</th><th className="px-6 py-4 text-right"></th></tr></thead>
-                <tbody className="divide-y">
-                  {users.map(u => (
-                    <tr key={u.id} className="text-[10px] font-black group">
-                      <td className="px-6 py-4">{u.username} <span className="block text-[8px] text-slate-400">{u.name}</span></td>
-                      <td className="px-6 py-4 text-right"><button onClick={() => handleDeleteUser(u.id)} className="text-rose-500 hover:scale-125 transition-transform px-4">✕</button></td>
-                    </tr>
-                  ))}
+                <thead className="bg-slate-50 text-[9px] font-black text-slate-400">
+                  <tr>
+                    <th className="px-6 py-4">Auditor</th>
+                    <th className="px-6 py-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {users.length === 0 ? (
+                    <tr><td colSpan={2} className="px-6 py-10 text-center text-slate-400 font-bold uppercase text-[10px]">Sin auditores registrados</td></tr>
+                  ) : (
+                    users.map(u => (
+                      <tr key={u.id} className={`text-[10px] font-black group transition-colors ${editingUserId === u.id ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+                        <td className="px-6 py-4">
+                          <span className="text-slate-900 font-black">{u.username}</span>
+                          <span className="block text-[8px] text-slate-400 font-bold uppercase">{u.name}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => handleEditUser(u)} className="text-indigo-500 hover:scale-125 transition-transform px-3 text-sm">✎</button>
+                          <button onClick={() => handleDeleteUser(u.id)} className="text-rose-500 hover:scale-125 transition-transform px-3 text-sm">✕</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
              </table>
           </div>
