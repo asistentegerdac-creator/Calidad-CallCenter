@@ -18,70 +18,44 @@ const syncSchema = async (targetPool) => {
   try {
     await client.query('BEGIN');
     
-    // Tablas base
+    // 1. Crear Tablas base si no existen
     await client.query(`CREATE TABLE IF NOT EXISTS dac_areas_master (name VARCHAR(100) PRIMARY KEY);`);
     await client.query(`CREATE TABLE IF NOT EXISTS dac_specialties_master (name VARCHAR(100) PRIMARY KEY);`);
-    
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS dac_users (
-        user_id VARCHAR(50) PRIMARY KEY,
-        username VARCHAR(100) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        full_name VARCHAR(255),
-        role VARCHAR(20) DEFAULT 'agent',
-        permissions TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
+    await client.query(`CREATE TABLE IF NOT EXISTS dac_users (user_id VARCHAR(50) PRIMARY KEY, username VARCHAR(100) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, full_name VARCHAR(255), role VARCHAR(20) DEFAULT 'agent', permissions TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`);
     await client.query(`CREATE TABLE IF NOT EXISTS dac_areas_config (area_name VARCHAR(100) PRIMARY KEY, manager_name VARCHAR(255) NOT NULL);`);
+    await client.query(`CREATE TABLE IF NOT EXISTS medical_incidences (audit_id VARCHAR(50) PRIMARY KEY, incidence_date DATE NOT NULL, patient_name VARCHAR(255) NOT NULL, complaint_description TEXT NOT NULL, registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`);
+    await client.query(`CREATE TABLE IF NOT EXISTS daily_stats (stat_date DATE PRIMARY KEY);`);
+    await client.query(`CREATE TABLE IF NOT EXISTS dac_no_call_list (id VARCHAR(50) PRIMARY KEY, patient_name VARCHAR(255) NOT NULL, patient_phone VARCHAR(50) NOT NULL, registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`);
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS medical_incidences (
-        audit_id VARCHAR(50) PRIMARY KEY,
-        incidence_date DATE NOT NULL,
-        patient_name VARCHAR(255) NOT NULL,
-        patient_phone VARCHAR(50),
-        doctor_name VARCHAR(255),
-        specialty_name VARCHAR(100),
-        area_name VARCHAR(100),
-        manager_name VARCHAR(255),
-        complaint_description TEXT NOT NULL,
-        current_status VARCHAR(50) DEFAULT 'Pendiente',
-        priority_level VARCHAR(50) DEFAULT 'Media',
-        satisfaction_score INTEGER,
-        management_solution TEXT,
-        resolved_by_admin VARCHAR(150),
-        sentiment_analysis TEXT,
-        suggested_response TEXT,
-        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+    // 2. FORZAR COLUMNAS FALTANTES (ALTER TABLE si ya existen las tablas)
+    // Tabla: medical_incidences
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS patient_phone VARCHAR(50);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS doctor_name VARCHAR(255);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS specialty_name VARCHAR(100);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS area_name VARCHAR(100);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS manager_name VARCHAR(255);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS current_status VARCHAR(50) DEFAULT 'Pendiente';`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS priority_level VARCHAR(50) DEFAULT 'Media';`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS satisfaction_score INTEGER;`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS management_solution TEXT;`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS resolved_by_admin VARCHAR(150);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS sentiment_analysis TEXT;`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS suggested_response TEXT;`);
 
-    // Aseguramos que daily_stats tenga la estructura correcta
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS daily_stats (
-        stat_date DATE PRIMARY KEY,
-        patients_attended INTEGER DEFAULT 0,
-        patients_called INTEGER DEFAULT 0,
-        calls_unanswered INTEGER DEFAULT 0
-      );
-    `);
+    // Tabla: daily_stats (ELIMINAR EL ERROR DE COLUMNA FALTANTE)
+    await client.query(`ALTER TABLE daily_stats ADD COLUMN IF NOT EXISTS patients_attended INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE daily_stats ADD COLUMN IF NOT EXISTS patients_called INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE daily_stats ADD COLUMN IF NOT EXISTS calls_unanswered INTEGER DEFAULT 0;`);
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS dac_no_call_list (
-        id VARCHAR(50) PRIMARY KEY,
-        patient_name VARCHAR(255) NOT NULL,
-        patient_phone VARCHAR(50) NOT NULL,
-        reason TEXT,
-        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+    // Tabla: dac_no_call_list
+    await client.query(`ALTER TABLE dac_no_call_list ADD COLUMN IF NOT EXISTS reason TEXT;`);
 
     await client.query('COMMIT');
+    console.log("✅ [DAC] Estructura Postgres verificada y reparada.");
     return true;
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("❌ [DAC] Error reparando esquema:", err.message);
     throw err;
   } finally {
     client.release();
@@ -106,7 +80,7 @@ app.post('/api/init-db', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB Offline' });
   try {
     await syncSchema(pool);
-    res.json({ success: true, message: "Estructura verificada correctamente" });
+    res.json({ success: true, message: "Estructura reparada y columnas verificadas" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -147,9 +121,6 @@ app.get('/api/stats', async (req, res) => {
 app.post('/api/stats', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'DB_DISCONNECTED' });
   const { date, patients_attended, patients_called, calls_unanswered } = req.body;
-  
-  if (!date) return res.status(400).json({ error: 'Fecha requerida' });
-
   try {
     await pool.query(`
       INSERT INTO daily_stats (stat_date, patients_attended, patients_called, calls_unanswered)
@@ -161,7 +132,6 @@ app.post('/api/stats', async (req, res) => {
     `, [date, parseInt(patients_attended) || 0, parseInt(patients_called) || 0, parseInt(calls_unanswered) || 0]);
     res.sendStatus(201);
   } catch (e) { 
-    console.error("DAC Stats Save Error:", e.message);
     res.status(500).json({ error: e.message }); 
   }
 });
@@ -329,4 +299,4 @@ app.delete('/api/nocall/:id', async (req, res) => {
 });
 
 const PORT = 3008;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 [DAC] Backend v8.7 OK` ));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 [DAC] Backend v8.8 REPAIR MODE ON` ));

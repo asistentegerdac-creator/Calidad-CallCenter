@@ -19,8 +19,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
-  const [editing, setEditing] = useState<Complaint | null>(null); // Edición de cabecera
-  const [resolving, setResolving] = useState<Complaint | null>(null); // Resolución rápida
+  const [editing, setEditing] = useState<Complaint | null>(null);
+  const [resolving, setResolving] = useState<Complaint | null>(null);
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -72,7 +72,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     return { total, resueltos, activos, criticas, satisfaction };
   }, [filtered]);
 
-  // Generador de Excel con formato Real (Usa HTML Table con MIME de Excel)
   const exportExcel = () => {
     const tableHtml = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -80,7 +79,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         <meta charset="UTF-8">
         <style>
           .header { background-color: #1a237e; color: white; font-weight: bold; font-size: 16pt; text-align: center; }
-          .title { background-color: #ad1457; color: white; font-weight: bold; text-align: left; }
           .th { background-color: #eeeeee; border: 0.5pt solid #000000; font-weight: bold; }
           .td { border: 0.5pt solid #cccccc; }
           .pending { color: #f97316; font-weight: bold; }
@@ -135,7 +133,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
   return (
     <div className="space-y-10 pb-20 animate-in fade-in duration-500">
-      {/* PANEL DE CONTROL NO-IMPRIMIBLE */}
       <div className="glass-card p-10 bg-white shadow-xl no-print border border-slate-100">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 mb-10">
             <div className="space-y-2">
@@ -188,7 +185,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         </div>
       </div>
 
-      {/* LISTA AGRUPADA POR JEFATURA */}
       <div className="space-y-10 no-print">
         {(Object.entries(groupedByManager) as [string, Complaint[]][]).map(([manager, items]) => (
           <div key={manager} className="glass-card bg-white p-8 border border-slate-100 shadow-md">
@@ -230,7 +226,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                         </span>
                       </td>
                       <td className="py-4 text-right">
-                         <button onClick={(e) => { e.stopPropagation(); setEditing({...c}); }} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase hover:bg-amber-600 transition-colors">Editar Datos</button>
+                         <button onClick={(e) => { e.stopPropagation(); setEditing({...c}); }} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase hover:bg-amber-600 transition-all">Editar</button>
                       </td>
                     </tr>
                   ))}
@@ -241,19 +237,18 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         ))}
       </div>
 
-      {/* MODALES DE EDICIÓN Y RESOLUCIÓN */}
       {editing && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
           <div className="bg-white w-full max-w-2xl p-10 rounded-[2.5rem] shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button onClick={() => setEditing(null)} className="absolute top-6 right-6 text-2xl text-slate-300">✕</button>
-            <h3 className="text-2xl font-black text-slate-900 uppercase mb-8">Edición Maestra de Registro</h3>
+            <h3 className="text-2xl font-black text-slate-900 uppercase mb-8">Edición de Registro</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Nombre Paciente</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.patientName} onChange={e => setEditing({...editing, patientName: e.target.value})} /></div>
-              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Médico Responsable</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} /></div>
+              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Paciente</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.patientName} onChange={e => setEditing({...editing, patientName: e.target.value})} /></div>
+              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Médico</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} /></div>
               <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Área</label><select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.area} onChange={e => setEditing({...editing, area: e.target.value})}>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
-              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Especialidad</label><select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.specialty} onChange={e => setEditing({...editing, specialty: e.target.value})}>{specialties.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-              <div className="col-span-2 space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Reclamo Original</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} /></div>
-              <button onClick={handleSave} className="col-span-2 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Guardar Cambios Maestros</button>
+              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Jefe</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.managerName} onChange={e => setEditing({...editing, managerName: e.target.value})} /></div>
+              <div className="col-span-2 space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Descripción</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} /></div>
+              <button onClick={handleSave} className="col-span-2 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Guardar</button>
             </div>
           </div>
         </div>
@@ -263,7 +258,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
           <div className="bg-white w-full max-w-lg p-10 rounded-[2.5rem] shadow-2xl relative">
             <button onClick={() => setResolving(null)} className="absolute top-6 right-6 text-2xl text-slate-300">✕</button>
-            <h3 className="text-xl font-black text-slate-900 uppercase mb-4">Resolución de Incidencia</h3>
+            <h3 className="text-xl font-black text-slate-900 uppercase mb-4">Resolución</h3>
             <p className="text-[10px] text-slate-400 font-bold mb-6 italic">"{resolving.description}"</p>
             <div className="space-y-6">
               <div className="flex gap-2">
@@ -271,108 +266,12 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                   <button key={s} onClick={() => setResolving({...resolving, status: s})} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${resolving.status === s ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>{s}</button>
                 ))}
               </div>
-              <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Descargo / Solución Aplicada</label>
-                <textarea className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-bold h-32 outline-none focus:ring-2 ring-amber-500" value={resolving.managementResponse || ''} onChange={e => setResolving({...resolving, managementResponse: e.target.value})} placeholder="Escriba la gestión realizada..." />
-              </div>
-              <button onClick={handleSave} className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Finalizar Gestión</button>
+              <textarea className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-bold h-32 outline-none" value={resolving.managementResponse || ''} onChange={e => setResolving({...resolving, managementResponse: e.target.value})} placeholder="Gestión realizada..." />
+              <button onClick={handleSave} className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Finalizar</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* DISEÑO PDF DASHBOARD REAL */}
-      <div className="hidden print:block bg-white text-slate-900 font-sans p-0 m-0">
-         <style>{`
-           @media print {
-             @page { size: portrait; margin: 0; }
-             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-             .pdf-header { background: #1a237e !important; color: white !important; padding: 30px; text-align: center; }
-             .pdf-header h1 { margin: 0; font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
-             .pdf-header p { font-size: 10px; margin-top: 5px; opacity: 0.8; font-weight: 700; }
-             .pdf-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 20px 40px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
-             .pdf-kpi-box { text-align: center; }
-             .pdf-kpi-box .val { font-size: 26px; font-weight: 900; color: #1a237e; margin: 0; }
-             .pdf-kpi-box .lab { font-size: 8px; font-weight: 800; color: #666; text-transform: uppercase; line-height: 1.1; margin-top: 4px; }
-             .pdf-section-title { background: #ad1457 !important; color: white !important; padding: 10px 20px; font-size: 12px; font-weight: 800; text-transform: uppercase; margin: 30px 0 10px; }
-             .pdf-table { width: 100%; border-collapse: collapse; margin: 0 0 30px; }
-             .pdf-table th { background: #f5f5f5; text-align: left; padding: 10px 8px; font-size: 9px; font-weight: 800; border-bottom: 2px solid #000; text-transform: uppercase; }
-             .pdf-table td { padding: 8px; border-bottom: 1px solid #eee; font-size: 9px; vertical-align: top; }
-             .break-avoid { break-inside: avoid; page-break-inside: avoid; }
-             .pdf-footer { margin-top: 100px; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; padding: 0 100px; text-align: center; }
-             .pdf-sig { border-top: 1.5px solid #000; padding-top: 10px; font-size: 10px; font-weight: 800; }
-           }
-         `}</style>
-
-         <div className="pdf-header">
-            <h1>Customer Service Dashboard - DAC Hospitalario</h1>
-            <p>GESTIÓN DE CALIDAD Y CONTROL DE INCIDENCIAS | PERIODO: {dateFrom} AL {dateTo}</p>
-         </div>
-
-         <div className="pdf-kpi-row">
-            <div className="pdf-kpi-box"><p className="val">{stats.total}</p><p className="lab">Incidencias<br/>Reportadas</p></div>
-            <div className="pdf-kpi-box"><p className="val">{stats.resueltos}</p><p className="lab">Casos<br/>Cerrados</p></div>
-            <div className="pdf-kpi-box"><p className="val">{stats.activos}</p><p className="lab">Casos<br/>en Gestión</p></div>
-            <div className="pdf-kpi-box"><p className="val">{stats.criticas}</p><p className="lab">Alertas<br/>Críticas</p></div>
-            <div className="pdf-kpi-box"><p className="val">{stats.satisfaction}</p><p className="lab">Rating<br/>Satisfacción</p></div>
-            <div className="pdf-kpi-box"><p className="val">{((stats.resueltos/(stats.total||1))*100).toFixed(0)}%</p><p className="lab">Eficiencia<br/>DAC</p></div>
-         </div>
-
-         <div style={{ padding: '0 40px' }}>
-            <div className="pdf-section-title">Análisis de Casos Pendientes y en Proceso</div>
-            <table className="pdf-table">
-               <thead>
-                  <tr>
-                     <th style={{ width: '15%' }}>FECHA / ID</th>
-                     <th style={{ width: '20%' }}>PACIENTE / CONTACTO</th>
-                     <th style={{ width: '20%' }}>ÁREA / JEFATURA</th>
-                     <th style={{ width: '35%' }}>RELATO DE INCIDENCIA</th>
-                     <th style={{ width: '10%' }}>ESTADO</th>
-                  </tr>
-               </thead>
-               <tbody>
-                  {filtered.filter(c => c.status !== ComplaintStatus.RESUELTO).map(c => (
-                    <tr key={c.id} className="break-avoid">
-                       <td><b>{c.date}</b><br/>{c.id}</td>
-                       <td><b className="uppercase">{c.patientName}</b><br/>{c.patientPhone}</td>
-                       <td><b>{c.area}</b><br/>{c.managerName || 'Sin Jefe'}</td>
-                       <td className="italic text-slate-500">"{c.description}"</td>
-                       <td style={{ color: c.status === 'Pendiente' ? '#f97316' : '#2563eb', fontWeight: 900 }}>{c.status.toUpperCase()}</td>
-                    </tr>
-                  ))}
-               </tbody>
-            </table>
-
-            <div className="pdf-section-title" style={{ background: '#333 !important' }}>Histórico de Resoluciones Cerradas</div>
-            <table className="pdf-table">
-               <thead>
-                  <tr>
-                     <th style={{ width: '15%' }}>ID / PACIENTE</th>
-                     <th style={{ width: '20%' }}>ÁREA / MÉDICO</th>
-                     <th style={{ width: '45%' }}>RESOLUCIÓN Y DESCARGO DAC</th>
-                     <th style={{ width: '12%' }}>AUDITOR</th>
-                     <th style={{ width: '8%' }}>NOTA</th>
-                  </tr>
-               </thead>
-               <tbody>
-                  {filtered.filter(c => c.status === ComplaintStatus.RESUELTO).map(c => (
-                    <tr key={c.id} className="break-avoid">
-                       <td><b>{c.id}</b><br/><span className="uppercase">{c.patientName}</span></td>
-                       <td><b>{c.area}</b><br/>Dr. {c.doctorName || 'N/A'}</td>
-                       <td><p className="font-bold">"{c.managementResponse}"</p></td>
-                       <td>{c.resolvedBy || 'Central'}</td>
-                       <td style={{textAlign:'center'}}><b>{c.satisfaction}/5</b></td>
-                    </tr>
-                  ))}
-               </tbody>
-            </table>
-
-            <div className="pdf-footer break-avoid">
-               <div className="pdf-sig">Firma de Auditoría de Calidad DAC</div>
-               <div className="pdf-sig">Firma de Dirección Médica</div>
-            </div>
-         </div>
-      </div>
     </div>
   );
 };
