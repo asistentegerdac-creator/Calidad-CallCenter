@@ -13,6 +13,13 @@ export const dbService = {
     } catch { return { connected: false, message: 'Error de red' }; }
   },
 
+  async initDatabase(): Promise<{ success: boolean; message: string }> {
+    try {
+      const r = await fetch(`${API_BASE}/init-db`, { method: 'POST' });
+      return await r.json();
+    } catch { return { success: false, message: 'Fallo al comunicar con el Nodo' }; }
+  },
+
   async login(username: string, password: string): Promise<User | null> {
     try {
       const r = await fetch(`${API_BASE}/login`, {
@@ -157,7 +164,12 @@ export const dbService = {
     try {
       const r = await fetch(`${API_BASE}/stats`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(s)
+        body: JSON.stringify({
+          date: s.date,
+          patients_attended: Number(s.patients_attended),
+          patients_called: Number(s.patients_called),
+          calls_unanswered: Number(s.calls_unanswered)
+        })
       });
       return r.ok;
     } catch { return false; }

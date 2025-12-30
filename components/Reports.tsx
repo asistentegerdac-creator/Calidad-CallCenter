@@ -176,9 +176,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         </div>
       </div>
 
-      {/* LISTA AGRUPADA POR JEFATURA (VISTA RESTAURADA) */}
+      {/* LISTA AGRUPADA POR JEFATURA */}
       <div className="space-y-10 no-print">
-        {/* Fix: Explicitly type entries to avoid 'unknown' inference for 'items' */}
         {(Object.entries(groupedByManager) as [string, Complaint[]][]).map(([manager, items]) => (
           <div key={manager} className="glass-card bg-white p-8 border border-slate-100 shadow-md">
             <h4 className="font-black text-indigo-900 text-sm uppercase mb-6 flex items-center gap-2">
@@ -230,7 +229,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         ))}
       </div>
 
-      {/* MODAL EDICIÓN MAESTRA (EDITAR DATOS) */}
+      {/* MODALES DE EDICIÓN Y RESOLUCIÓN */}
       {editing && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
           <div className="bg-white w-full max-w-2xl p-10 rounded-[2.5rem] shadow-2xl relative max-h-[90vh] overflow-y-auto">
@@ -248,7 +247,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         </div>
       )}
 
-      {/* MODAL RESOLUCIÓN RÁPIDA (CLIC EN LÍNEA) */}
       {resolving && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
           <div className="bg-white w-full max-w-lg p-10 rounded-[2.5rem] shadow-2xl relative">
@@ -263,7 +261,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Descargo / Solución Aplicada</label>
-                <textarea className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-bold h-32 outline-none focus:ring-2 ring-amber-500" value={resolving.managementResponse} onChange={e => setResolving({...resolving, managementResponse: e.target.value})} placeholder="Escriba la gestión realizada..." />
+                <textarea className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-bold h-32 outline-none focus:ring-2 ring-amber-500" value={resolving.managementResponse || ''} onChange={e => setResolving({...resolving, managementResponse: e.target.value})} placeholder="Escriba la gestión realizada..." />
               </div>
               <button onClick={handleSave} className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Finalizar Gestión</button>
             </div>
@@ -271,7 +269,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         </div>
       )}
 
-      {/* DISEÑO PDF DASHBOARD REAL (PARA IMPRESIÓN) */}
+      {/* DISEÑO PDF DASHBOARD REAL */}
       <div className="hidden print:block bg-white text-slate-900 font-sans p-0 m-0">
          <style>{`
            @media print {
@@ -280,18 +278,14 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
              .pdf-header { background: #1a237e !important; color: white !important; padding: 30px; text-align: center; }
              .pdf-header h1 { margin: 0; font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
              .pdf-header p { font-size: 10px; margin-top: 5px; opacity: 0.8; font-weight: 700; }
-             
              .pdf-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 20px 40px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
              .pdf-kpi-box { text-align: center; }
              .pdf-kpi-box .val { font-size: 26px; font-weight: 900; color: #1a237e; margin: 0; }
              .pdf-kpi-box .lab { font-size: 8px; font-weight: 800; color: #666; text-transform: uppercase; line-height: 1.1; margin-top: 4px; }
-
              .pdf-section-title { background: #ad1457 !important; color: white !important; padding: 10px 20px; font-size: 12px; font-weight: 800; text-transform: uppercase; margin: 30px 0 10px; }
-             
              .pdf-table { width: 100%; border-collapse: collapse; margin: 0 0 30px; }
              .pdf-table th { background: #f5f5f5; text-align: left; padding: 10px 8px; font-size: 9px; font-weight: 800; border-bottom: 2px solid #000; text-transform: uppercase; }
              .pdf-table td { padding: 8px; border-bottom: 1px solid #eee; font-size: 9px; vertical-align: top; }
-             
              .break-avoid { break-inside: avoid; page-break-inside: avoid; }
              .pdf-footer { margin-top: 100px; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; padding: 0 100px; text-align: center; }
              .pdf-sig { border-top: 1.5px solid #000; padding-top: 10px; font-size: 10px; font-weight: 800; }

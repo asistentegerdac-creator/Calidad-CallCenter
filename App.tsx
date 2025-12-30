@@ -191,7 +191,7 @@ const App: React.FC = () => {
               {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
               {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={autoSync} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} />}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} />}
-              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} onUpdateFull={handleUpdateFull} currentUser={currentUser} />}
+              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} />}
               {activeView === 'no-call' && <NoCallList noCallList={noCallList} isOnline={isOnline} onRefresh={autoSync} />}
               {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} />}
             </div>
