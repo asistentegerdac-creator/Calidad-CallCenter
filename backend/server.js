@@ -18,11 +18,10 @@ const syncSchema = async (targetPool) => {
   try {
     await client.query('BEGIN');
     
-    // Tablas de Catálogo
+    // Tablas base
     await client.query(`CREATE TABLE IF NOT EXISTS dac_areas_master (name VARCHAR(100) PRIMARY KEY);`);
     await client.query(`CREATE TABLE IF NOT EXISTS dac_specialties_master (name VARCHAR(100) PRIMARY KEY);`);
     
-    // Tablas de Usuarios
     await client.query(`
       CREATE TABLE IF NOT EXISTS dac_users (
         user_id VARCHAR(50) PRIMARY KEY,
@@ -35,10 +34,8 @@ const syncSchema = async (targetPool) => {
       );
     `);
 
-    // Tablas de Configuración de Jefaturas
     await client.query(`CREATE TABLE IF NOT EXISTS dac_areas_config (area_name VARCHAR(100) PRIMARY KEY, manager_name VARCHAR(255) NOT NULL);`);
 
-    // Tabla Maestra de Incidencias (Asegurando todas las columnas)
     await client.query(`
       CREATE TABLE IF NOT EXISTS medical_incidences (
         audit_id VARCHAR(50) PRIMARY KEY,
@@ -61,7 +58,7 @@ const syncSchema = async (targetPool) => {
       );
     `);
 
-    // Tabla de Estadísticas Diarias (Monitor)
+    // Aseguramos que daily_stats tenga la estructura correcta
     await client.query(`
       CREATE TABLE IF NOT EXISTS daily_stats (
         stat_date DATE PRIMARY KEY,
@@ -71,7 +68,6 @@ const syncSchema = async (targetPool) => {
       );
     `);
 
-    // Tabla de Lista Negra
     await client.query(`
       CREATE TABLE IF NOT EXISTS dac_no_call_list (
         id VARCHAR(50) PRIMARY KEY,
@@ -83,11 +79,9 @@ const syncSchema = async (targetPool) => {
     `);
 
     await client.query('COMMIT');
-    console.log("✅ [DAC] Esquema de base de datos verificado y actualizado.");
     return true;
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("❌ [DAC] Error sincronizando esquema:", err.message);
     throw err;
   } finally {
     client.release();
@@ -103,26 +97,21 @@ const loadConfig = async () => {
       await syncSchema(newPool);
       pool = newPool;
       currentConfig = config;
-      console.log(`🔗 [DAC] Nodo Conectado: ${config.database}`);
-    } catch (e) { 
-      console.error("❌ [DAC] Error al cargar configuración inicial"); 
-    }
+    } catch (e) { console.error("DAC DB Load Error"); }
   }
 };
 loadConfig();
 
-// ENDPOINT PARA INICIALIZACIÓN/REPARACIÓN MANUAL
 app.post('/api/init-db', async (req, res) => {
-  if (!pool) return res.status(503).json({ error: 'No hay conexión a la base de datos configurada' });
+  if (!pool) return res.status(503).json({ error: 'DB Offline' });
   try {
     await syncSchema(pool);
-    res.json({ success: true, message: "Tablas reparadas/creadas correctamente" });
+    res.json({ success: true, message: "Estructura verificada correctamente" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// TEST DE CONEXIÓN Y GUARDADO DE CONFIG
 app.post('/api/test-db', async (req, res) => {
   const config = req.body;
   const testPool = new Pool({ ...config, connectionTimeoutMillis: 5000 });
@@ -133,20 +122,17 @@ app.post('/api/test-db', async (req, res) => {
     pool = testPool;
     currentConfig = config;
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/health', async (req, res) => {
-  if (!pool) return res.json({ connected: false, message: 'Nodo Desconectado' });
+  if (!pool) return res.json({ connected: false });
   try {
     await pool.query('SELECT 1');
-    res.json({ connected: true, database: currentConfig?.database });
-  } catch (e) { res.json({ connected: false, message: 'DB Timeout' }); }
+    res.json({ connected: true });
+  } catch (e) { res.json({ connected: false }); }
 });
 
-// --- ENDPOINTS DE INDICADORES (MONITOR) ---
 app.get('/api/stats', async (req, res) => {
   if (!pool) return res.json([]);
   try {
@@ -159,8 +145,11 @@ app.get('/api/stats', async (req, res) => {
 });
 
 app.post('/api/stats', async (req, res) => {
-  if (!pool) return res.status(503).json({ error: 'DB_OFFLINE' });
+  if (!pool) return res.status(503).json({ error: 'DB_DISCONNECTED' });
   const { date, patients_attended, patients_called, calls_unanswered } = req.body;
+  
+  if (!date) return res.status(400).json({ error: 'Fecha requerida' });
+
   try {
     await pool.query(`
       INSERT INTO daily_stats (stat_date, patients_attended, patients_called, calls_unanswered)
@@ -169,15 +158,14 @@ app.post('/api/stats', async (req, res) => {
         patients_attended = EXCLUDED.patients_attended, 
         patients_called = EXCLUDED.patients_called, 
         calls_unanswered = EXCLUDED.calls_unanswered
-    `, [date, patients_attended, patients_called, calls_unanswered]);
+    `, [date, parseInt(patients_attended) || 0, parseInt(patients_called) || 0, parseInt(calls_unanswered) || 0]);
     res.sendStatus(201);
   } catch (e) { 
-    console.error("Error guardando stats:", e.message);
-    res.status(500).send(e.message); 
+    console.error("DAC Stats Save Error:", e.message);
+    res.status(500).json({ error: e.message }); 
   }
 });
 
-// --- RESTO DE ENDPOINTS (COPIAR SIEMPRE EL RESTO PARA MANTENER CONSISTENCIA) ---
 app.post('/api/login', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'OFFLINE' });
   const { username, password } = req.body;
@@ -341,4 +329,4 @@ app.delete('/api/nocall/:id', async (req, res) => {
 });
 
 const PORT = 3008;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 [DAC] Backend v8.6 en puerto ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 [DAC] Backend v8.7 OK` ));

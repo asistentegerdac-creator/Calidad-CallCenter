@@ -30,6 +30,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     return noCallList.some(p => p.patientPhone === phone || p.patientName.toLowerCase() === name.toLowerCase());
   };
 
+  const managers = useMemo(() => {
+    const list = Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean)));
+    return list.sort();
+  }, [complaints]);
+
   const filtered = useMemo(() => {
     const statusOrder = {
       [ComplaintStatus.PENDIENTE]: 0,
@@ -146,7 +151,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Desde</label>
             <input type="date" className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -160,6 +165,13 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
               <option value="Todas">Todas las Unidades</option>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Jefatura</label>
+            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterManager} onChange={e => setFilterManager(e.target.value)}>
+              <option value="Todos">Todos los Jefes</option>
+              {managers.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div className="space-y-1">

@@ -12,38 +12,61 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
   const [attended, setAttended] = useState(0);
   const [called, setCalled] = useState(0);
   const [unanswered, setUnanswered] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    const fetch = async () => {
+  const fetchStats = async () => {
+    try {
       const stats = await dbService.fetchDailyStats();
-      setDailyStats(stats);
+      setDailyStats(stats || []);
       const todayStat = stats.find(s => s.date.includes(dateControl));
       if (todayStat) {
-        setAttended(todayStat.patients_attended);
-        setCalled(todayStat.patients_called);
-        setUnanswered(todayStat.calls_unanswered || 0);
+        setAttended(Number(todayStat.patients_attended) || 0);
+        setCalled(Number(todayStat.patients_called) || 0);
+        setUnanswered(Number(todayStat.calls_unanswered) || 0);
       } else {
         setAttended(0);
         setCalled(0);
         setUnanswered(0);
       }
-    };
-    fetch();
+    } catch (e) {
+      console.error("Error fetching stats:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
   }, [dateControl]);
 
   const handleSaveStats = async () => {
-    const ok = await dbService.saveDailyStat({ 
-      date: dateControl, 
-      patients_attended: attended, 
-      patients_called: called,
-      calls_unanswered: unanswered 
-    });
-    if (ok) {
-      const stats = await dbService.fetchDailyStats();
-      setDailyStats(stats);
-      alert("Control diario actualizado.");
-    } else {
-      alert("Error al guardar. Verifique conexión al Nodo.");
+    setIsSaving(true);
+    try {
+      // Verificamos conexión antes de intentar guardar
+      const health = await dbService.checkHealth();
+      if (!health.connected) {
+        alert("Sin conexión con el Nodo Postgres. Verifique los ajustes de red.");
+        setIsSaving(false);
+        return;
+      }
+
+      const statData: DailyStat = { 
+        date: dateControl, 
+        patients_attended: attended, 
+        patients_called: called,
+        calls_unanswered: unanswered 
+      };
+
+      const ok = await dbService.saveDailyStat(statData);
+      
+      if (ok) {
+        await fetchStats();
+        alert("✅ Indicadores sincronizados exitosamente en Postgres.");
+      } else {
+        alert("❌ Error de Servidor: El nodo Postgres rechazó el guardado. Verifique logs del backend.");
+      }
+    } catch (e: any) {
+      alert("⚠️ Error crítico: " + (e.message || "Fallo de comunicación"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -80,18 +103,24 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
           <div className="space-y-3">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pacientes Atendidos</label>
-            <input type="number" className="w-full bg-white/5 rounded-2xl p-4 text-xl font-black outline-none border border-white/10" value={attended} onChange={e => setAttended(parseInt(e.target.value) || 0)} />
+            <input type="number" min="0" className="w-full bg-white/5 rounded-2xl p-4 text-xl font-black outline-none border border-white/10" value={attended} onChange={e => setAttended(Math.max(0, parseInt(e.target.value) || 0))} />
           </div>
           <div className="space-y-3">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Llamadas Atendidas</label>
-            <input type="number" className="w-full bg-white/5 rounded-2xl p-4 text-xl font-black outline-none border border-white/10" value={called} onChange={e => setCalled(parseInt(e.target.value) || 0)} />
+            <input type="number" min="0" className="w-full bg-white/5 rounded-2xl p-4 text-xl font-black outline-none border border-white/10" value={called} onChange={e => setCalled(Math.max(0, parseInt(e.target.value) || 0))} />
           </div>
           <div className="space-y-3">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Llamadas Sin Contestar</label>
-            <input type="number" className="w-full bg-white/5 rounded-2xl p-4 text-xl font-black outline-none border border-white/10" value={unanswered} onChange={e => setUnanswered(parseInt(e.target.value) || 0)} />
+            <input type="number" min="0" className="w-full bg-white/5 rounded-2xl p-4 text-xl font-black outline-none border border-white/10" value={unanswered} onChange={e => setUnanswered(Math.max(0, parseInt(e.target.value) || 0))} />
           </div>
           <div className="flex items-end">
-            <button onClick={handleSaveStats} className="w-full py-5 bg-amber-500 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-2xl hover:bg-white hover:text-amber-600 transition-all">Sincronizar</button>
+            <button 
+              disabled={isSaving}
+              onClick={handleSaveStats} 
+              className="w-full py-5 bg-amber-500 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-2xl hover:bg-white hover:text-amber-600 transition-all disabled:opacity-50"
+            >
+              {isSaving ? 'SINCRO...' : 'Sincronizar'}
+            </button>
           </div>
         </div>
       </div>
@@ -131,7 +160,7 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={dailyStats.slice(0, 7).reverse()}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="date" tickFormatter={(v) => v.split('-').slice(1).join('/')} tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
+              <XAxis dataKey="date" tickFormatter={(v) => v ? v.split('-').slice(1).join('/') : ''} tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
               <YAxis tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
               <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
               <Legend iconType="circle" />
