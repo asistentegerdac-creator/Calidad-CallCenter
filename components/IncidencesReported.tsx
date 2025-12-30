@@ -154,6 +154,10 @@ export const IncidencesReported: React.FC<Props> = ({
                 {editing ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Fecha del Incidente</label>
+                      <input type="date" className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" value={editing.date} onChange={e => setEditing({...editing, date: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Nombre Paciente</label>
                       <input className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" value={editing.patientName} onChange={e => setEditing({...editing, patientName: e.target.value})} />
                     </div>
@@ -162,10 +166,22 @@ export const IncidencesReported: React.FC<Props> = ({
                       <input className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" value={editing.patientPhone} onChange={e => setEditing({...editing, patientPhone: e.target.value})} />
                     </div>
                     <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Área</label>
+                      <select className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold outline-none" value={editing.area} onChange={e => setEditing({...editing, area: e.target.value})}>
+                        {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Especialidad</label>
+                      <select className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold outline-none" value={editing.specialty} onChange={e => setEditing({...editing, specialty: e.target.value})}>
+                        {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Médico Responsable</label>
                       <input className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 col-span-2">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Nivel de Prioridad</label>
                       <select className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" value={editing.priority} onChange={e => setEditing({...editing, priority: e.target.value as Priority})}>
                         {Object.values(Priority).map(p => <option key={p} value={p}>{p}</option>)}

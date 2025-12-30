@@ -72,56 +72,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     return { total, resueltos, activos, criticas, satisfaction };
   }, [filtered]);
 
-  const exportExcel = () => {
-    const tableHtml = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          .header { background-color: #1a237e; color: white; font-weight: bold; font-size: 16pt; text-align: center; }
-          .th { background-color: #eeeeee; border: 0.5pt solid #000000; font-weight: bold; }
-          .td { border: 0.5pt solid #cccccc; }
-          .pending { color: #f97316; font-weight: bold; }
-          .resolved { color: #10b981; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <tr><td colspan="10" class="header">DASHBOARD DE GESTIÓN DE CALIDAD DAC</td></tr>
-          <tr><td colspan="10">Periodo: ${dateFrom} al ${dateTo} | Generado: ${new Date().toLocaleString()}</td></tr>
-          <tr></tr>
-          <tr><td colspan="2" class="th">Total Casos</td><td class="td">${stats.total}</td><td colspan="2" class="th">Satisfacción</td><td class="td">${stats.satisfaction}</td></tr>
-          <tr></tr>
-          <tr>
-            <th class="th">ESTADO</th><th class="th">PRIORIDAD</th><th class="th">ID</th><th class="th">FECHA</th>
-            <th class="th">PACIENTE</th><th class="th">AREA</th><th class="th">MEDICO</th><th class="th">JEFE</th>
-            <th class="th">RECLAMO</th><th class="th">RESOLUCION</th>
-          </tr>
-          ${filtered.map(c => `
-            <tr>
-              <td class="td ${c.status === 'Resuelto' ? 'resolved' : 'pending'}">${c.status.toUpperCase()}</td>
-              <td class="td">${c.priority}</td>
-              <td class="td">${c.id}</td>
-              <td class="td">${c.date}</td>
-              <td class="td">${c.patientName}</td>
-              <td class="td">${c.area}</td>
-              <td class="td">${c.doctorName || 'N/A'}</td>
-              <td class="td">${c.managerName || 'N/A'}</td>
-              <td class="td">${c.description}</td>
-              <td class="td">${c.managementResponse || ''}</td>
-            </tr>
-          `).join('')}
-        </table>
-      </body>
-      </html>
-    `;
-    const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `REPORTE_GERENCIAL_DAC.xls`;
-    link.click();
-  };
-
   const handleSave = () => {
     const data = editing || resolving;
     if (data) {
@@ -143,7 +93,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Filtre y genere documentos con validez oficial</p>
             </div>
             <div className="flex flex-wrap gap-4">
-               <button onClick={exportExcel} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📘 EXCEL PROFESIONAL</button>
                <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
             </div>
         </div>
@@ -241,33 +190,41 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
           <div className="bg-white w-full max-w-2xl p-10 rounded-[2.5rem] shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button onClick={() => setEditing(null)} className="absolute top-6 right-6 text-2xl text-slate-300">✕</button>
-            <h3 className="text-2xl font-black text-slate-900 uppercase mb-8">Edición de Registro</h3>
+            <h3 className="text-2xl font-black text-slate-900 uppercase mb-8">Edición de Registro Maestro</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Paciente</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.patientName} onChange={e => setEditing({...editing, patientName: e.target.value})} /></div>
-              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Médico</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} /></div>
-              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Área</label><select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.area} onChange={e => setEditing({...editing, area: e.target.value})}>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
-              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Jefe</label><input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.managerName} onChange={e => setEditing({...editing, managerName: e.target.value})} /></div>
-              <div className="col-span-2 space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Descripción</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} /></div>
-              <button onClick={handleSave} className="col-span-2 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Guardar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {resolving && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[500] no-print">
-          <div className="bg-white w-full max-w-lg p-10 rounded-[2.5rem] shadow-2xl relative">
-            <button onClick={() => setResolving(null)} className="absolute top-6 right-6 text-2xl text-slate-300">✕</button>
-            <h3 className="text-xl font-black text-slate-900 uppercase mb-4">Resolución</h3>
-            <p className="text-[10px] text-slate-400 font-bold mb-6 italic">"{resolving.description}"</p>
-            <div className="space-y-6">
-              <div className="flex gap-2">
-                {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
-                  <button key={s} onClick={() => setResolving({...resolving, status: s})} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${resolving.status === s ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>{s}</button>
-                ))}
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Fecha</label>
+                <input type="date" className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.date} onChange={e => setEditing({...editing, date: e.target.value})} />
               </div>
-              <textarea className="w-full p-4 bg-slate-50 border rounded-2xl text-xs font-bold h-32 outline-none" value={resolving.managementResponse || ''} onChange={e => setResolving({...resolving, managementResponse: e.target.value})} placeholder="Gestión realizada..." />
-              <button onClick={handleSave} className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Finalizar</button>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Paciente</label>
+                <input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.patientName} onChange={e => setEditing({...editing, patientName: e.target.value})} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Médico</label>
+                <input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Área</label>
+                <select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.area} onChange={e => setEditing({...editing, area: e.target.value})}>
+                  {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Especialidad</label>
+                <select className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.specialty} onChange={e => setEditing({...editing, specialty: e.target.value})}>
+                  {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Jefe</label>
+                <input className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold" value={editing.managerName} onChange={e => setEditing({...editing, managerName: e.target.value})} />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Descripción</label>
+                <textarea className="w-full p-3 bg-slate-50 border rounded-xl text-xs font-bold h-24" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
+              </div>
+              <button onClick={handleSave} className="col-span-2 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Guardar Cambios</button>
             </div>
           </div>
         </div>

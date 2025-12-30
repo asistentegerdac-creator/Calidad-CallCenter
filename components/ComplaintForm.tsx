@@ -17,11 +17,21 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
   
   const [formData, setFormData] = useState({
     patientName: '', patientPhone: '', doctorName: '', 
-    specialty: specialties[0] || '', 
-    area: areas[0] || '', managerName: '',
+    specialty: '', 
+    area: '', managerName: '',
     description: '', status: ComplaintStatus.PENDIENTE, satisfaction: 3,
     date: new Date().toISOString().split('T')[0]
   });
+
+  // Asegurar que el área y especialidad tengan valores por defecto cuando carguen los props
+  useEffect(() => {
+    if (!formData.area && areas.length > 0) {
+      setFormData(prev => ({ ...prev, area: areas[0] }));
+    }
+    if (!formData.specialty && specialties.length > 0) {
+      setFormData(prev => ({ ...prev, specialty: specialties[0] }));
+    }
+  }, [areas, specialties]);
 
   useEffect(() => {
     dbService.fetchAreasConfig().then(setMappings);
@@ -36,7 +46,6 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     }
   }, [formData.area, mappings]);
 
-  // Alerta de Lista Negra en tiempo real
   const isOnNoCallList = useMemo(() => {
     if (!formData.patientPhone && !formData.patientName) return false;
     return noCallList.some(p => 
@@ -47,7 +56,10 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.description) return;
+    if (!formData.description || !formData.area || !formData.specialty) {
+      alert("Por favor complete Área y Especialidad");
+      return;
+    }
     setLoading(true);
     const analysis = await analyzeComplaint(formData.description);
     onAdd({
@@ -58,18 +70,25 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       suggestedResponse: analysis?.suggestedResponse,
     });
     setLoading(false);
-    setFormData({ ...formData, patientName: '', description: '', patientPhone: '', doctorName: '', satisfaction: 3, date: new Date().toISOString().split('T')[0] });
+    setFormData({ 
+      ...formData, 
+      patientName: '', 
+      description: '', 
+      patientPhone: '', 
+      doctorName: '', 
+      satisfaction: 3, 
+      date: new Date().toISOString().split('T')[0] 
+    });
   };
 
   return (
     <div className="glass-card bg-white p-6 md:p-12 border-orange-100 shadow-2xl relative overflow-hidden">
-      {/* ALERTA DE SEGURIDAD LISTA NEGRA */}
       {isOnNoCallList && (
         <div className="mb-8 bg-rose-600 p-6 rounded-[2rem] border-4 border-rose-300 animate-pulse shadow-[0_0_30px_rgba(225,29,72,0.4)] flex items-center gap-6">
            <div className="text-4xl">🚫</div>
            <div>
               <h4 className="text-white font-black uppercase text-lg leading-none">Alerta de Seguridad DAC</h4>
-              <p className="text-rose-100 font-bold text-[10px] uppercase mt-1 tracking-widest">Este paciente está registrado en la lista de NO LLAMAR. Proceda con extrema precaución.</p>
+              <p className="text-rose-100 font-bold text-[10px] uppercase mt-1 tracking-widest">Este paciente está registrado en la lista de NO LLAMAR.</p>
            </div>
         </div>
       )}
@@ -83,43 +102,51 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       </div>
       
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha del Reporte</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha del Evento</label>
             <input type="date" required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
           </div>
           <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Área del Evento</label>
-            <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})}>
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Área Responsable</label>
+            <select required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})}>
+              <option value="">-- Seleccione Área --</option>
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe Responsable (Auto)</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad Médica</label>
+            <select required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}>
+              <option value="">-- Seleccione Especialidad --</option>
+              {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe de Área (Automático)</label>
             <input disabled className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-black text-sm text-amber-600" value={formData.managerName || 'SIN ASIGNAR'} />
           </div>
-          <div className="space-y-1 md:col-span-2">
+          <div className="space-y-1 md:col-span-2 lg:col-span-2">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre del Paciente</label>
             <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} placeholder="Nombre completo..." />
           </div>
           <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Teléfono / Celular</label>
-            <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientPhone} onChange={e => setFormData({...formData, patientPhone: e.target.value})} placeholder="Número de contacto..." />
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Teléfono de Contacto</label>
+            <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientPhone} onChange={e => setFormData({...formData, patientPhone: e.target.value})} placeholder="Ej: 999 888 777" />
           </div>
-          <div className="space-y-1 md:col-span-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Médico / Personal</label>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Personal / Médico</label>
             <input className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.doctorName} onChange={e => setFormData({...formData, doctorName: e.target.value})} placeholder="Dr. Nombre..." />
           </div>
         </div>
 
         <div className="space-y-2">
           <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Relato de la Incidencia</label>
-          <textarea required className="w-full bg-slate-50 border rounded-2xl p-6 font-bold text-sm h-32 focus:ring-2 ring-amber-500 outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Describa detalladamente lo ocurrido..." />
+          <textarea required className="w-full bg-slate-50 border rounded-2xl p-6 font-bold text-sm h-32 focus:ring-2 ring-amber-500 outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Describa detalladamente lo ocurrido para el análisis de IA..." />
         </div>
 
         <div className="flex flex-col md:flex-row gap-8 items-center justify-between p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
           <div className="space-y-3">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Grado de Satisfacción</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Satisfacción del Paciente</label>
             <div className="flex gap-2">
                {[1,2,3,4,5].map(n => (
                  <button type="button" key={n} onClick={() => setFormData({...formData, satisfaction: n})} className={`w-12 h-12 rounded-xl font-black text-lg transition-all ${formData.satisfaction >= n ? 'bg-amber-500 text-white shadow-lg' : 'bg-white text-slate-300'}`}>
@@ -129,7 +156,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
             </div>
           </div>
           <button disabled={loading} className="w-full md:w-auto px-16 py-6 neo-warm-button rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-2xl disabled:opacity-50">
-            {loading ? 'ANALIZANDO...' : 'GRABAR REPORTE'}
+            {loading ? 'ANALIZANDO...' : 'REGISTRAR INCIDENCIA'}
           </button>
         </div>
       </form>
