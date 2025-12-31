@@ -37,7 +37,7 @@ export const IncidencesReported: React.FC<Props> = ({
   }, [selected]);
 
   const isNoCall = (phone: string, name: string) => {
-    return noCallList.some(p => p.patientPhone === phone || p.patientName.toLowerCase() === name.toLowerCase());
+    return noCallList.some(p => p.patientPhone === phone || (p.patientName && p.patientName.toLowerCase() === name.toLowerCase()));
   };
 
   const filtered = useMemo(() => {
@@ -81,6 +81,12 @@ export const IncidencesReported: React.FC<Props> = ({
       });
       setSelected(null);
     }
+  };
+
+  const handleDelete = (id: string) => {
+    onDelete(id);
+    setEditing(null);
+    setSelected(null);
   };
 
   return (
@@ -191,8 +197,9 @@ export const IncidencesReported: React.FC<Props> = ({
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Descripción del Incidente</label>
                       <textarea className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-[1.5rem] text-sm font-bold h-32 transition-all outline-none" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
                     </div>
-                    <div className="md:col-span-2 flex gap-4 mt-6">
+                    <div className="md:col-span-2 flex flex-col md:flex-row gap-4 mt-6">
                       <button onClick={handleFullEditSave} className="flex-1 py-5 bg-slate-900 text-white rounded-3xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl hover:bg-black transition-all">Guardar Cambios Maestros</button>
+                      <button onClick={() => handleDelete(editing.id)} className="py-5 px-10 bg-rose-600 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-rose-700 transition-all">Eliminar Queja</button>
                       <button onClick={() => setEditing(null)} className="py-5 px-10 bg-slate-100 text-slate-500 rounded-3xl font-black uppercase text-xs">Descartar</button>
                     </div>
                   </div>

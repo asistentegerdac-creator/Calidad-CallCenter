@@ -174,6 +174,14 @@ app.post('/api/complaints', async (req, res) => {
   } catch (e) { res.status(500).send(e.message); }
 });
 
+app.delete('/api/complaints/:id', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'OFFLINE' });
+  try {
+    await pool.query('DELETE FROM medical_incidences WHERE audit_id = $1', [req.params.id]);
+    res.sendStatus(200);
+  } catch (e) { res.status(500).send(e.message); }
+});
+
 app.get('/api/nocall', async (req, res) => {
   if (!pool) return res.json([]);
   try {

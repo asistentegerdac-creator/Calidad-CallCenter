@@ -153,6 +153,13 @@ export const dbService = {
     } catch { return false; }
   },
 
+  async deleteComplaint(id: string): Promise<boolean> {
+    try {
+      const r = await fetch(`${API_BASE}/complaints/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return r.ok;
+    } catch { return false; }
+  },
+
   async fetchDailyStats(): Promise<DailyStat[]> {
     try {
       const r = await fetch(`${API_BASE}/stats`);
