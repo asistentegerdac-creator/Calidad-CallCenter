@@ -40,7 +40,6 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
   const handleSaveStats = async () => {
     setIsSaving(true);
     try {
-      // Verificamos conexión antes de intentar guardar
       const health = await dbService.checkHealth();
       if (!health.connected) {
         alert("Sin conexión con el Nodo Postgres. Verifique los ajustes de red.");
@@ -61,7 +60,7 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
         await fetchStats();
         alert("✅ Indicadores sincronizados exitosamente en Postgres.");
       } else {
-        alert("❌ Error de Servidor: El nodo Postgres rechazó el guardado. Verifique logs del backend.");
+        alert("❌ Error de Servidor.");
       }
     } catch (e: any) {
       alert("⚠️ Error crítico: " + (e.message || "Fallo de comunicación"));
@@ -79,8 +78,7 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
     const areaCounts: any = {};
     complaints.forEach(c => areaCounts[c.area] = (areaCounts[c.area] || 0) + 1);
     const criticalAreas = Object.entries(areaCounts)
-      .sort((a: any, b: any) => b[1] - a[1])
-      .slice(0, 3);
+      .sort((a: any, b: any) => b[1] - a[1]);
 
     return { total, resolved, pending, satisfactionAvg, criticalAreas };
   }, [complaints]);
@@ -143,20 +141,24 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
         </div>
         <div className="glass-card p-8 bg-slate-50 border-none">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Ranking Áreas Críticas</p>
-          <div className="space-y-2">
-            {metrics.criticalAreas.map(([area, count]: any) => (
-              <div key={area} className="flex justify-between items-center text-[10px] font-black">
-                <span className="text-slate-600 uppercase truncate max-w-[100px]">{area}</span>
-                <span className="text-slate-900 bg-white px-2 py-0.5 rounded-md shadow-sm border border-slate-200">{count}</span>
-              </div>
-            ))}
+          <div className="space-y-2 max-height-[100px] overflow-y-auto pr-2 custom-scrollbar" style={{maxHeight: '100px'}}>
+            {metrics.criticalAreas.length === 0 ? (
+              <p className="text-[8px] font-bold text-slate-400 uppercase text-center py-4">Sin datos de áreas</p>
+            ) : (
+              metrics.criticalAreas.map(([area, count]: any) => (
+                <div key={area} className="flex justify-between items-center text-[10px] font-black">
+                  <span className="text-slate-600 uppercase truncate max-w-[120px]">{area}</span>
+                  <span className="text-slate-900 bg-white px-2 py-0.5 rounded-md shadow-sm border border-slate-200">{count}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="glass-card p-10 bg-white border border-slate-100 shadow-sm min-h-[450px]">
-          <h4 className="text-sm font-black text-slate-900 mb-10 uppercase tracking-widest">Desempeño Operativo de Llamadas</h4>
+          <h4 className="text-sm font-black text-slate-900 mb-10 uppercase tracking-widest">Desempeño Operativo DAC</h4>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={dailyStats.slice(0, 7).reverse()}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -164,14 +166,15 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
               <YAxis tick={{fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
               <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
               <Legend iconType="circle" />
-              <Bar dataKey="patients_called" name="Llamadas Atendidas" fill="#10b981" radius={[10, 10, 0, 0]} />
-              <Bar dataKey="calls_unanswered" name="Sin Contestar" fill="#f43f5e" radius={[10, 10, 0, 0]} />
+              <Bar dataKey="patients_attended" name="Pacientes Atendidos" fill="#6366f1" radius={[10, 10, 0, 0]} />
+              <Bar dataKey="patients_called" name="Llamadas Realizadas" fill="#10b981" radius={[10, 10, 0, 0]} />
+              <Bar dataKey="calls_unanswered" name="Llamadas Perdidas" fill="#f43f5e" radius={[10, 10, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         <div className="glass-card p-10 bg-white border border-slate-100 shadow-sm min-h-[450px]">
-          <h4 className="text-sm font-black text-slate-900 mb-10 uppercase tracking-widest">Curva de Pacientes Atendidos</h4>
+          <h4 className="text-sm font-black text-slate-900 mb-10 uppercase tracking-widest">Curva de Atención Hospitalaria</h4>
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={dailyStats.slice(0, 14).reverse()}>
               <defs>

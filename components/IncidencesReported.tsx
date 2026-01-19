@@ -20,7 +20,13 @@ export const IncidencesReported: React.FC<Props> = ({
   const [selected, setSelected] = useState<Complaint | null>(null);
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
+  
+  // Filtros
   const [filterManager, setFilterManager] = useState('Todos');
+  const [filterArea, setFilterArea] = useState('Todas');
+  const [filterStatus, setFilterStatus] = useState('Todos');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const [tempStatus, setTempStatus] = useState<ComplaintStatus>(ComplaintStatus.PENDIENTE);
   const [tempResponse, setTempResponse] = useState('');
@@ -48,9 +54,17 @@ export const IncidencesReported: React.FC<Props> = ({
     };
 
     return [...complaints]
-      .filter(c => filterManager === 'Todos' || c.managerName === filterManager)
+      .filter(c => {
+        const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
+        const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
+        const matchStatus = filterStatus === 'Todos' ? true : c.status === filterStatus;
+        const matchDateFrom = dateFrom === '' ? true : c.date >= dateFrom;
+        const matchDateTo = dateTo === '' ? true : c.date <= dateTo;
+        
+        return matchManager && matchArea && matchStatus && matchDateFrom && matchDateTo;
+      })
       .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-  }, [complaints, filterManager]);
+  }, [complaints, filterManager, filterArea, filterStatus, dateFrom, dateTo]);
 
   const managers = useMemo(() => Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean))), [complaints]);
 
@@ -91,56 +105,91 @@ export const IncidencesReported: React.FC<Props> = ({
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="glass-card bg-white p-8 shadow-sm border border-slate-100 flex justify-between items-center no-print">
-         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-           <span className="w-2 h-6 bg-orange-500 rounded-full"></span>
-           Centro de Gestión Activa DAC
-         </h3>
-         <div className="flex gap-4">
-           <select className="bg-slate-50 border rounded-xl p-3 text-xs font-bold" value={filterManager} onChange={e => setFilterManager(e.target.value)}>
-             <option value="Todos">Todas las Jefaturas</option>
-             {managers.map(m => <option key={String(m)} value={String(m)}>{String(m)}</option>)}
-           </select>
-           {onRefresh && <button onClick={onRefresh} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-black">Sincronizar Nodo</button>}
+      <div className="glass-card bg-white p-6 md:p-8 shadow-sm border border-slate-100 no-print space-y-6">
+         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+              <span className="w-2 h-6 bg-orange-500 rounded-full"></span>
+              Gestión Activa de Incidencias
+            </h3>
+            {onRefresh && <button onClick={onRefresh} className="bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-black transition-all">Sincronizar Nodo</button>}
+         </div>
+
+         {/* Barra de Filtros */}
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+            <div className="space-y-1">
+               <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Desde</label>
+               <input type="date" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+               <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Hasta</label>
+               <input type="date" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+               <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Área</label>
+               <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
+                  <option value="Todas">Todas las Unidades</option>
+                  {areas.map(a => <option key={a} value={a}>{a}</option>)}
+               </select>
+            </div>
+            <div className="space-y-1">
+               <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefatura</label>
+               <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={filterManager} onChange={e => setFilterManager(e.target.value)}>
+                  <option value="Todos">Todos los Jefes</option>
+                  {managers.map(m => <option key={String(m)} value={String(m)}>{String(m)}</option>)}
+               </select>
+            </div>
+            <div className="space-y-1">
+               <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Estado</label>
+               <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                  <option value="Todos">Todos</option>
+                  {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s}</option>)}
+               </select>
+            </div>
          </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.map(c => {
-          const noLlamar = isNoCall(c.patientPhone, c.patientName);
-          return (
-            <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all relative flex flex-col min-h-[380px] cursor-pointer group ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''}`} 
-                 style={{ borderTopColor: c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981' }}
-                 onClick={() => setSelected(c)}>
-              <div className="mb-4">
-                <div className="flex justify-between items-start">
-                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
+        {filtered.length === 0 ? (
+          <div className="col-span-full py-20 text-center glass-card bg-white border-dashed border-2 border-slate-200">
+             <p className="text-slate-400 font-black uppercase text-[10px]">Sin incidencias que coincidan con los filtros</p>
+          </div>
+        ) : (
+          filtered.map(c => {
+            const noLlamar = isNoCall(c.patientPhone, c.patientName);
+            return (
+              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all relative flex flex-col min-h-[380px] cursor-pointer group ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''}`} 
+                   style={{ borderTopColor: c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981' }}
+                   onClick={() => setSelected(c)}>
+                <div className="mb-4">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
+                  </div>
+                  <h4 className="text-xl font-black text-slate-900 leading-tight mt-2 group-hover:text-orange-600 transition-colors uppercase">{c.patientName}</h4>
+                  <p className="text-[10px] font-bold text-slate-400 mt-1">{c.date}</p>
+                  {noLlamar && <div className="mt-2 bg-rose-50 p-2 rounded-lg border border-rose-100 animate-pulse"><span className="text-rose-600 text-[9px] font-black uppercase">⚠️ RESTRICCIÓN: NO LLAMAR</span></div>}
                 </div>
-                <h4 className="text-xl font-black text-slate-900 leading-tight mt-2 group-hover:text-orange-600 transition-colors uppercase">{c.patientName}</h4>
-                <p className="text-[10px] font-bold text-slate-400 mt-1">{c.date}</p>
-                {noLlamar && <div className="mt-2 bg-rose-50 p-2 rounded-lg border border-rose-100 animate-pulse"><span className="text-rose-600 text-[9px] font-black uppercase">⚠️ RESTRICCIÓN: NO LLAMAR</span></div>}
+                <div className="space-y-3 mb-4">
+                   <div className="flex flex-wrap gap-2">
+                      <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 uppercase">{c.area}</span>
+                      {c.specialty && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 uppercase">{c.specialty}</span>}
+                   </div>
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-1">Personal Involucrado</p>
+                      <p className="text-[12px] font-black text-slate-900 uppercase truncate">Dr. {c.doctorName || 'No especificado'}</p>
+                   </div>
+                </div>
+                <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner">
+                   <p className="text-[12px] text-slate-600 font-medium leading-relaxed line-clamp-4">"{c.description}"</p>
+                </div>
+                <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                   <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(c.status)}`}>{c.status}</span>
+                   <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2.5 bg-slate-900 text-white rounded-xl text-[9px] uppercase font-black hover:bg-orange-500 transition-all">Editar Ficha</button>
+                </div>
               </div>
-              <div className="space-y-3 mb-4">
-                 <div className="flex flex-wrap gap-2">
-                    <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 uppercase">{c.area}</span>
-                    {c.specialty && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 uppercase">{c.specialty}</span>}
-                 </div>
-                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-1">Personal Involucrado</p>
-                    <p className="text-[12px] font-black text-slate-900 uppercase truncate">Dr. {c.doctorName || 'No especificado'}</p>
-                 </div>
-              </div>
-              <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner">
-                 <p className="text-[12px] text-slate-600 font-medium leading-relaxed line-clamp-4">"{c.description}"</p>
-              </div>
-              <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-                 <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(c.status)}`}>{c.status}</span>
-                 <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2.5 bg-slate-900 text-white rounded-xl text-[9px] uppercase font-black hover:bg-orange-500 transition-all">Editar Ficha</button>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {(editing || selected) && (
