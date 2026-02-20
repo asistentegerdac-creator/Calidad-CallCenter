@@ -163,7 +163,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           area: item.area,
           specialty: item.specialty,
           status: item.status,
-          description: item.description
+          description: '' // Se deja vacío para usar la fila combinada abajo
         });
 
         row.eachCell((cell) => {
@@ -171,7 +171,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           cell.border = {
             bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }
           };
-          if (cell.address.startsWith('F')) { // Columna de Estado
+          if (cell.address.includes('F' + row.number)) { // Columna de Estado (F)
             cell.font = fontBlackBold;
             if (item.status === ComplaintStatus.PENDIENTE) {
               cell.font = { ...fontBlackBold, color: { argb: 'FFEA580C' } }; // Orange 600
@@ -180,6 +180,27 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             }
           }
         });
+
+        // FILA DE DESCRIPCIÓN COMBINADA (Para mejor lectura de textos largos)
+        const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
+        worksheet.mergeCells(`A${descRow.number}:G${descRow.number}`);
+        const descCell = descRow.getCell(1);
+        descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
+        descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
+        descCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF8FAFC' } // Slate 50
+        };
+        descCell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+        };
+        
+        // Ajustar altura de fila según longitud del texto
+        const estimatedLines = Math.ceil(item.description.length / 120);
+        descRow.height = Math.max(25, estimatedLines * 15);
       });
 
       // Espacio entre grupos
