@@ -2,6 +2,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Complaint, ComplaintStatus, User, NoCallPatient, Priority } from '../types';
 import { dbService } from '../services/apiService';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 interface Props { 
   complaints: Complaint[]; 
@@ -73,6 +75,122 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     }
   };
 
+  const handleExportExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Reporte Pendientes y Proceso');
+
+    // Estilos base
+    const headerFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1E1B4B' } // Indigo 950
+    };
+
+    const managerFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF59E0B' } // Amber 500
+    };
+
+    const fontWhite: Partial<ExcelJS.Font> = {
+      color: { argb: 'FFFFFFFF' },
+      bold: true,
+      name: 'Plus Jakarta Sans',
+      size: 11
+    };
+
+    const fontBlackBold: Partial<ExcelJS.Font> = {
+      bold: true,
+      name: 'Plus Jakarta Sans',
+      size: 10
+    };
+
+    const fontStandard: Partial<ExcelJS.Font> = {
+      name: 'Plus Jakarta Sans',
+      size: 10
+    };
+
+    // Columnas
+    worksheet.columns = [
+      { header: 'FECHA', key: 'date', width: 15 },
+      { header: 'ID', key: 'id', width: 15 },
+      { header: 'PACIENTE', key: 'patientName', width: 30 },
+      { header: 'ÁREA', key: 'area', width: 20 },
+      { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
+      { header: 'ESTADO', key: 'status', width: 15 },
+      { header: 'DESCRIPCIÓN', key: 'description', width: 50 },
+    ];
+
+    // Estilo de cabecera
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.font = fontWhite;
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    });
+
+    // Filtrar y agrupar
+    const pendingItems = complaints.filter(c => 
+      c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO
+    );
+
+    const grouped: Record<string, Complaint[]> = {};
+    pendingItems.forEach(c => {
+      const mgr = c.managerName || 'SIN JEFE ASIGNADO';
+      if (!grouped[mgr]) grouped[mgr] = [];
+      grouped[mgr].push(c);
+    });
+
+    // Agregar datos agrupados
+    Object.entries(grouped).forEach(([manager, items]) => {
+      // Fila de Jefe
+      const managerRow = worksheet.addRow([`JEFATURA: ${manager}`]);
+      worksheet.mergeCells(`A${managerRow.number}:G${managerRow.number}`);
+      managerRow.getCell(1).fill = managerFill;
+      managerRow.getCell(1).font = fontWhite;
+      managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+
+      items.forEach(item => {
+        const row = worksheet.addRow({
+          date: item.date,
+          id: item.id,
+          patientName: item.patientName.toUpperCase(),
+          area: item.area,
+          specialty: item.specialty,
+          status: item.status,
+          description: item.description
+        });
+
+        row.eachCell((cell) => {
+          cell.font = fontStandard;
+          cell.border = {
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          };
+          if (cell.address.startsWith('F')) { // Columna de Estado
+            cell.font = fontBlackBold;
+            if (item.status === ComplaintStatus.PENDIENTE) {
+              cell.font = { ...fontBlackBold, color: { argb: 'FFEA580C' } }; // Orange 600
+            } else if (item.status === ComplaintStatus.PROCESO) {
+              cell.font = { ...fontBlackBold, color: { argb: 'FF2563EB' } }; // Blue 600
+            }
+          }
+        });
+      });
+
+      // Espacio entre grupos
+      worksheet.addRow([]);
+    });
+
+    // Descargar
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Reporte_DAC_Pendientes_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const handleDelete = (id: string) => {
     onDelete(id);
     setEditing(null);
@@ -92,6 +210,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             </div>
             <div className="flex flex-wrap gap-4">
                <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
+               <button onClick={handleExportExcel} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 EXCEL PENDIENTES</button>
             </div>
         </div>
 
