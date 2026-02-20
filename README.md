@@ -1,20 +1,42 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Sistema de Gestión de Calidad DAC
 
-# Run and deploy your AI Studio app
+Este proyecto consta de un Frontend (React + Vite) y un Backend (Node.js + Express + Postgres).
 
-This contains everything you need to run your app locally.
+## Requisitos Previos
 
-View your app in AI Studio: https://ai.studio/apps/62e52a30-f6db-420c-b88b-ba4050aadc27
+- [Node.js](https://nodejs.org/) (v18 o superior)
+- [PostgreSQL](https://www.postgresql.org/) (Opcional, la app funciona en modo local sin él)
 
-## Run Locally
+## Instalación
 
-**Prerequisites:**  Node.js
+1. Descargue o clone el repositorio.
+2. Abra una terminal en la carpeta raíz del proyecto.
+3. Instale las dependencias:
+   ```bash
+   npm install
+   ```
 
+## Ejecución
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Para iniciar tanto el servidor de desarrollo como el backend simultáneamente:
+
+```bash
+npm run dev
+```
+
+La aplicación estará disponible en:
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend API: [http://localhost:3008](http://localhost:3008)
+
+## Estructura del Proyecto
+
+- `/` - Código fuente del Frontend (React).
+- `/backend` - Código fuente del Backend (Node.js).
+- `/components` - Componentes de React.
+- `/services` - Servicios de comunicación con la API.
+
+## Notas
+
+- Si no tiene una base de datos Postgres configurada, la aplicación iniciará en **Modo Local**.
+- El usuario por defecto es `admin` y la contraseña es `admin`.
+- Para configurar Postgres, vaya a la sección de **Ajustes** dentro de la aplicación una vez iniciada.

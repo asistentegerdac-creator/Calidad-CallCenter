@@ -15,19 +15,51 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [isOnline, setIsOnline] = useState(false);
   const [dbStatusMsg, setDbStatusMsg] = useState('Verificando...');
-  const [currentTheme, setCurrentTheme] = useState<string>(() => localStorage.getItem('dac_theme') || 'classic');
+  const [currentTheme, setCurrentTheme] = useState<string>(() => {
+    try {
+      return localStorage.getItem('dac_theme') || 'classic';
+    } catch {
+      return 'classic';
+    }
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [users, setUsers] = useState<User[]>([]);
-  const [complaints, setComplaints] = useState<Complaint[]>(() => JSON.parse(localStorage.getItem('dac_complaints') || '[]'));
+  const [complaints, setComplaints] = useState<Complaint[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('dac_complaints') || '[]');
+    } catch {
+      return [];
+    }
+  });
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   
-  const [areas, setAreas] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_areas') || '["Urgencias", "Triaje", "Laboratorio", "Rayos X", "Consultas", "Farmacia"]'));
-  const [specialties, setSpecialties] = useState<string[]>(() => JSON.parse(localStorage.getItem('dac_specialties') || '["Medicina General", "Pediatría", "Ginecología", "Cardiología"]'));
+  const [areas, setAreas] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('dac_areas') || '["Urgencias", "Triaje", "Laboratorio", "Rayos X", "Consultas", "Farmacia"]');
+    } catch {
+      return ["Urgencias", "Triaje", "Laboratorio", "Rayos X", "Consultas", "Farmacia"];
+    }
+  });
+  const [specialties, setSpecialties] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('dac_specialties') || '["Medicina General", "Pediatría", "Ginecología", "Cardiología"]');
+    } catch {
+      return ["Medicina General", "Pediatría", "Ginecología", "Cardiología"];
+    }
+  });
+
+  useEffect(() => {
+    console.log("DAC App Initialized");
+  }, []);
 
   useEffect(() => {
     document.body.className = currentTheme === 'classic' ? '' : `theme-${currentTheme}`;
-    localStorage.setItem('dac_theme', currentTheme);
+    try {
+      localStorage.setItem('dac_theme', currentTheme);
+    } catch (e) {
+      console.warn("LocalStorage not available", e);
+    }
   }, [currentTheme]);
 
   useEffect(() => {
@@ -95,14 +127,18 @@ const App: React.FC = () => {
   const handleAddComplaint = async (c: Complaint) => {
     const newComplaints = [c, ...complaints];
     setComplaints(newComplaints);
-    localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
+    try {
+      localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
+    } catch {}
     if (isOnline) await dbService.saveComplaint(c);
   };
 
   const handleUpdateFull = async (updated: Complaint) => {
     const newComplaints = complaints.map(c => c.id === updated.id ? updated : c);
     setComplaints(newComplaints);
-    localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
+    try {
+      localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
+    } catch {}
     if (isOnline) await dbService.saveComplaint(updated);
   };
 
@@ -110,7 +146,9 @@ const App: React.FC = () => {
     if (!confirm("¿Desea eliminar este registro permanentemente de la base de datos?")) return;
     const newComplaints = complaints.filter(c => c.id !== id);
     setComplaints(newComplaints);
-    localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
+    try {
+      localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
+    } catch {}
     if (isOnline) await dbService.deleteComplaint(id);
   };
 
@@ -118,14 +156,18 @@ const App: React.FC = () => {
     if (areas.includes(name)) return;
     const newAreas = [...areas, name];
     setAreas(newAreas);
-    localStorage.setItem('dac_areas', JSON.stringify(newAreas));
+    try {
+      localStorage.setItem('dac_areas', JSON.stringify(newAreas));
+    } catch {}
     if (isOnline) await dbService.saveArea(name);
   };
 
   const handleRemoveArea = async (name: string) => {
     const newAreas = areas.filter(a => a !== name);
     setAreas(newAreas);
-    localStorage.setItem('dac_areas', JSON.stringify(newAreas));
+    try {
+      localStorage.setItem('dac_areas', JSON.stringify(newAreas));
+    } catch {}
     if (isOnline) await dbService.deleteAreaCatalog(name);
   };
 
@@ -133,14 +175,18 @@ const App: React.FC = () => {
     if (specialties.includes(name)) return;
     const newSpecs = [...specialties, name];
     setSpecialties(newSpecs);
-    localStorage.setItem('dac_specialties', JSON.stringify(newSpecs));
+    try {
+      localStorage.setItem('dac_specialties', JSON.stringify(newSpecs));
+    } catch {}
     if (isOnline) await dbService.saveSpecialty(name);
   };
 
   const handleRemoveSpecialty = async (name: string) => {
     const newSpecs = specialties.filter(s => s !== name);
     setSpecialties(newSpecs);
-    localStorage.setItem('dac_specialties', JSON.stringify(newSpecs));
+    try {
+      localStorage.setItem('dac_specialties', JSON.stringify(newSpecs));
+    } catch {}
     if (isOnline) await dbService.deleteSpecialtyCatalog(name);
   };
 

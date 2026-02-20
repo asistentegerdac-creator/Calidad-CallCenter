@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Complaint, ComplaintStatus, User, NoCallPatient, Priority } from '../types';
 import { dbService } from '../services/apiService';
-import ExcelJS from 'exceljs';
+import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
 interface Props { 

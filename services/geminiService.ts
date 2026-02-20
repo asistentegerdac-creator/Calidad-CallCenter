@@ -2,10 +2,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Fix: Exclusively use process.env.API_KEY directly as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!apiKey) {
+      console.warn("Gemini API Key not found. AI features will be disabled.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey: apiKey || 'dummy-key' });
+  }
+  return aiInstance;
+};
 
 export const analyzeComplaint = async (description: string) => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text: `Analiza la siguiente queja médica y responde estrictamente en formato JSON: "${description}"` }] }],

@@ -32,9 +32,15 @@ export const Settings: React.FC<Props> = ({
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({ type: 'area', value: '' });
 
-  const [dbParams, setDbParams] = useState({
-    host: localStorage.getItem('last_db_host') || 'localhost',
-    port: '5432', database: 'calidad_dac_db', user: 'postgres', password: ''
+  const [dbParams, setDbParams] = useState(() => {
+    let host = 'localhost';
+    try {
+      host = localStorage.getItem('last_db_host') || 'localhost';
+    } catch {}
+    return {
+      host,
+      port: '5432', database: 'calidad_dac_db', user: 'postgres', password: ''
+    };
   });
 
   const themes = [

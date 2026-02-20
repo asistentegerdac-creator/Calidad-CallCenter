@@ -1,8 +1,7 @@
 
 import { Complaint, DailyStat, User, AreaMapping, NoCallPatient } from '../types';
 
-const hostname = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
-const API_BASE = `http://${hostname}:3008/api`;
+const API_BASE = `/api`;
 
 export const dbService = {
   async checkHealth(): Promise<{ connected: boolean; message?: string }> {
