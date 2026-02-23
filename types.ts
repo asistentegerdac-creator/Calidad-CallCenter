@@ -29,6 +29,7 @@ export interface Complaint {
   suggestedResponse?: string;
   managementResponse?: string;
   resolvedBy?: string;
+  resolvedAt?: string;
 }
 
 export interface AreaMapping {

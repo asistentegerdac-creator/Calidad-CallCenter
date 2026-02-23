@@ -69,7 +69,12 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const handleSave = () => {
     const data = editing || resolving;
     if (data) {
-      onUpdateFull({ ...data, resolvedBy: currentUser?.name || 'Admin' });
+      const updatedData = { ...data, resolvedBy: currentUser?.name || 'Admin' };
+      // Si el estado cambia a Resuelto y no tiene fecha de resolución, la asignamos
+      if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
+        updatedData.resolvedAt = new Date().toISOString();
+      }
+      onUpdateFull(updatedData);
       setEditing(null);
       setResolving(null);
     }
@@ -212,6 +217,144 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     saveAs(new Blob([buffer]), `Reporte_DAC_Pendientes_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const handleExportExcelResolved = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Reporte Resueltos');
+
+    // Estilos base
+    const headerFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1E1B4B' } // Indigo 950
+    };
+
+    const managerFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF10B981' } // Emerald 500 para resueltos
+    };
+
+    const fontWhite: Partial<ExcelJS.Font> = {
+      color: { argb: 'FFFFFFFF' },
+      bold: true,
+      name: 'Plus Jakarta Sans',
+      size: 11
+    };
+
+    const fontBlackBold: Partial<ExcelJS.Font> = {
+      bold: true,
+      name: 'Plus Jakarta Sans',
+      size: 10
+    };
+
+    const fontStandard: Partial<ExcelJS.Font> = {
+      name: 'Plus Jakarta Sans',
+      size: 10
+    };
+
+    // Columnas
+    worksheet.columns = [
+      { header: 'FECHA INICIO', key: 'date', width: 15 },
+      { header: 'ID', key: 'id', width: 15 },
+      { header: 'PACIENTE', key: 'patientName', width: 30 },
+      { header: 'ÁREA', key: 'area', width: 20 },
+      { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
+      { header: 'ESTADO', key: 'status', width: 15 },
+      { header: 'FECHA RES.', key: 'resolvedDate', width: 15 },
+      { header: 'HORA RES.', key: 'resolvedTime', width: 15 },
+      { header: 'RESUELTO POR', key: 'resolvedBy', width: 25 },
+      { header: 'DESCRIPCIÓN', key: 'description', width: 50 },
+    ];
+
+    // Estilo de cabecera
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.font = fontWhite;
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    });
+
+    // Filtrar por RESUELTOS y rango de fecha
+    const resolvedItems = complaints.filter(c => 
+      c.status === ComplaintStatus.RESUELTO && c.date >= dateFrom && c.date <= dateTo
+    );
+
+    const grouped: Record<string, Complaint[]> = {};
+    resolvedItems.forEach(c => {
+      const mgr = c.managerName || 'SIN JEFE ASIGNADO';
+      if (!grouped[mgr]) grouped[mgr] = [];
+      grouped[mgr].push(c);
+    });
+
+    // Agregar datos agrupados
+    Object.entries(grouped).forEach(([manager, items]) => {
+      // Fila de Jefe
+      const managerRow = worksheet.addRow([`JEFATURA: ${manager}`]);
+      worksheet.mergeCells(`A${managerRow.number}:J${managerRow.number}`);
+      managerRow.getCell(1).fill = managerFill;
+      managerRow.getCell(1).font = fontWhite;
+      managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+
+      items.forEach(item => {
+        const resolvedDateObj = item.resolvedAt ? new Date(item.resolvedAt) : null;
+        
+        const row = worksheet.addRow({
+          date: item.date,
+          id: item.id,
+          patientName: item.patientName.toUpperCase(),
+          area: item.area,
+          specialty: item.specialty,
+          status: item.status,
+          resolvedDate: resolvedDateObj ? resolvedDateObj.toLocaleDateString() : 'N/A',
+          resolvedTime: resolvedDateObj ? resolvedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+          resolvedBy: item.resolvedBy || 'N/A',
+          description: '' 
+        });
+
+        row.eachCell((cell) => {
+          cell.font = fontStandard;
+          cell.border = {
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          };
+          if (cell.address.includes('F' + row.number)) { 
+            cell.font = { ...fontBlackBold, color: { argb: 'FF10B981' } }; // Emerald 600
+          }
+        });
+
+        // FILA DE DESCRIPCIÓN COMBINADA
+        const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
+        worksheet.mergeCells(`A${descRow.number}:J${descRow.number}`);
+        const descCell = descRow.getCell(1);
+        descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
+        descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
+        descCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF8FAFC' } 
+        };
+        descCell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+        };
+        
+        const estimatedLines = Math.ceil(item.description.length / 150);
+        descRow.height = Math.max(25, estimatedLines * 15);
+      });
+
+      worksheet.addRow([]);
+    });
+
+    // Descargar
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Reporte_DAC_Resueltos_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const handleDelete = (id: string) => {
     onDelete(id);
     setEditing(null);
@@ -232,6 +375,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             <div className="flex flex-wrap gap-4">
                <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
                <button onClick={handleExportExcel} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 EXCEL PENDIENTES</button>
+               <button onClick={handleExportExcelResolved} className="px-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">📊 EXCEL RESUELTOS</button>
             </div>
         </div>
 

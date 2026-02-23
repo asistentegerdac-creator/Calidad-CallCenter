@@ -87,12 +87,18 @@ export const IncidencesReported: React.FC<Props> = ({
 
   const handleQuickResolutionSave = () => {
     if (selected) {
-      onUpdateFull({
+      const updatedData: Complaint = {
         ...selected,
         status: tempStatus,
         managementResponse: tempResponse,
         resolvedBy: currentUser?.name || 'Administrador'
-      });
+      };
+      
+      if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
+        updatedData.resolvedAt = new Date().toISOString();
+      }
+      
+      onUpdateFull(updatedData);
       setSelected(null);
     }
   };
