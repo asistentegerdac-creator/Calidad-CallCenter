@@ -21,6 +21,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [dateFrom, setDateFrom] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportType, setExportType] = useState<'pending' | 'resolved'>('pending');
+  const [exportDateFrom, setExportDateFrom] = useState(dateFrom);
+  const [exportDateTo, setExportDateTo] = useState(dateTo);
+
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [resolving, setResolving] = useState<Complaint | null>(null);
@@ -80,7 +85,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     }
   };
 
-  const handleExportExcel = async () => {
+  const handleExportExcel = async (from: string, to: string) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Reporte Pendientes y Proceso');
 
@@ -123,6 +128,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       { header: 'ÁREA', key: 'area', width: 20 },
       { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
       { header: 'ESTADO', key: 'status', width: 15 },
+      { header: 'TOTAL JEFE', key: 'managerCount', width: 15 },
       { header: 'DESCRIPCIÓN', key: 'description', width: 50 },
     ];
 
@@ -139,9 +145,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       };
     });
 
-    // Filtrar y agrupar
+    // Filtrar y agrupar por rango de fecha solicitado
     const pendingItems = complaints.filter(c => 
-      c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO
+      (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO) &&
+      c.date >= from && c.date <= to
     );
 
     const grouped: Record<string, Complaint[]> = {};
@@ -153,9 +160,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     // Agregar datos agrupados
     Object.entries(grouped).forEach(([manager, items]) => {
+      const totalCount = items.length;
       // Fila de Jefe
       const managerRow = worksheet.addRow([`JEFATURA: ${manager}`]);
-      worksheet.mergeCells(`A${managerRow.number}:G${managerRow.number}`);
+      worksheet.mergeCells(`A${managerRow.number}:H${managerRow.number}`);
       managerRow.getCell(1).fill = managerFill;
       managerRow.getCell(1).font = fontWhite;
       managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
@@ -168,6 +176,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           area: item.area,
           specialty: item.specialty,
           status: item.status,
+          managerCount: totalCount,
           description: '' // Se deja vacío para usar la fila combinada abajo
         });
 
@@ -176,7 +185,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           cell.border = {
             bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }
           };
-          if (cell.address.includes('F' + row.number)) { // Columna de Estado (F)
+          
+          // Columna de Estado (F)
+          if (cell.address.includes('F' + row.number)) { 
             cell.font = fontBlackBold;
             if (item.status === ComplaintStatus.PENDIENTE) {
               cell.font = { ...fontBlackBold, color: { argb: 'FFEA580C' } }; // Orange 600
@@ -184,11 +195,17 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
               cell.font = { ...fontBlackBold, color: { argb: 'FF2563EB' } }; // Blue 600
             }
           }
+
+          // Columna de Total Jefe (G) - Destacado en Negritas y Rojo
+          if (cell.address.includes('G' + row.number)) {
+            cell.font = { ...fontBlackBold, color: { argb: 'FFFF0000' } }; // Red
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          }
         });
 
         // FILA DE DESCRIPCIÓN COMBINADA (Para mejor lectura de textos largos)
         const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
-        worksheet.mergeCells(`A${descRow.number}:G${descRow.number}`);
+        worksheet.mergeCells(`A${descRow.number}:H${descRow.number}`);
         const descCell = descRow.getCell(1);
         descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
         descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -214,10 +231,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     // Descargar
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `Reporte_DAC_Pendientes_${new Date().toISOString().split('T')[0]}.xlsx`);
+    saveAs(new Blob([buffer]), `Reporte_DAC_Pendientes_${from}_al_${to}.xlsx`);
   };
 
-  const handleExportExcelResolved = async () => {
+  const handleExportExcelResolved = async (from: string, to: string) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Reporte Resueltos');
 
@@ -279,9 +296,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       };
     });
 
-    // Filtrar por RESUELTOS y rango de fecha
+    // Filtrar por RESUELTOS y rango de fecha solicitado (usando fecha de incidencia)
     const resolvedItems = complaints.filter(c => 
-      c.status === ComplaintStatus.RESUELTO && c.date >= dateFrom && c.date <= dateTo
+      c.status === ComplaintStatus.RESUELTO && c.date >= from && c.date <= to
     );
 
     const grouped: Record<string, Complaint[]> = {};
@@ -352,7 +369,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     // Descargar
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `Reporte_DAC_Resueltos_${new Date().toISOString().split('T')[0]}.xlsx`);
+    saveAs(new Blob([buffer]), `Reporte_DAC_Resueltos_${from}_al_${to}.xlsx`);
   };
 
   const handleDelete = (id: string) => {
@@ -374,8 +391,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             </div>
             <div className="flex flex-wrap gap-4">
                <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
-               <button onClick={handleExportExcel} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 EXCEL PENDIENTES</button>
-               <button onClick={handleExportExcelResolved} className="px-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">📊 EXCEL RESUELTOS</button>
+               <button onClick={() => { setExportType('pending'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 EXCEL PENDIENTES</button>
+               <button onClick={() => { setExportType('resolved'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">📊 EXCEL RESUELTOS</button>
             </div>
         </div>
 
@@ -476,6 +493,56 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           </div>
         ))}
       </div>
+
+      {/* MODAL DE EXPORTACIÓN */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[600] no-print">
+          <div className="bg-white w-full max-w-md p-10 rounded-[3rem] shadow-2xl relative border border-white/20">
+            <button onClick={() => setShowExportModal(false)} className="absolute top-8 right-8 text-3xl text-slate-300 font-light hover:text-rose-500 transition-colors">✕</button>
+            <div className="mb-8">
+               <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Exportar a Excel</h3>
+               <p className="text-[10px] font-black text-indigo-500 tracking-[0.2em] mt-2 uppercase">
+                 {exportType === 'pending' ? 'Casos Pendientes y en Proceso' : 'Casos Resueltos'}
+               </p>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Desde (Fecha Incidencia)</label>
+                <input 
+                  type="date" 
+                  className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-2xl text-sm font-bold outline-none transition-all shadow-inner" 
+                  value={exportDateFrom} 
+                  onChange={e => setExportDateFrom(e.target.value)} 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Hasta (Fecha Incidencia)</label>
+                <input 
+                  type="date" 
+                  className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-2xl text-sm font-bold outline-none transition-all shadow-inner" 
+                  value={exportDateTo} 
+                  onChange={e => setExportDateTo(e.target.value)} 
+                />
+              </div>
+
+              <button 
+                onClick={() => {
+                  if (exportType === 'pending') {
+                    handleExportExcel(exportDateFrom, exportDateTo);
+                  } else {
+                    handleExportExcelResolved(exportDateFrom, exportDateTo);
+                  }
+                  setShowExportModal(false);
+                }} 
+                className="w-full py-6 bg-indigo-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-black transition-all transform hover:-translate-y-1"
+              >
+                GENERAR EXCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL EDICIÓN TOTAL (BOTÓN EDITAR) */}
       {editing && (
