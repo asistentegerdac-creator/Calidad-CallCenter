@@ -128,7 +128,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       { header: 'ÁREA', key: 'area', width: 20 },
       { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
       { header: 'ESTADO', key: 'status', width: 15 },
-      { header: 'TOTAL JEFE', key: 'managerCount', width: 15 },
       { header: 'DESCRIPCIÓN', key: 'description', width: 50 },
     ];
 
@@ -145,11 +144,14 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       };
     });
 
-    // Filtrar y agrupar por rango de fecha solicitado
-    const pendingItems = complaints.filter(c => 
-      (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO) &&
-      c.date >= from && c.date <= to
-    );
+    // Filtrar y agrupar por rango de fecha solicitado (asegurando comparación limpia de fechas)
+    const pendingItems = complaints.filter(c => {
+      const cDate = c.date.trim().substring(0, 10);
+      const fromDate = from.trim().substring(0, 10);
+      const toDate = to.trim().substring(0, 10);
+      return (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO) &&
+             cDate >= fromDate && cDate <= toDate;
+    });
 
     const grouped: Record<string, Complaint[]> = {};
     pendingItems.forEach(c => {
@@ -161,9 +163,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     // Agregar datos agrupados
     Object.entries(grouped).forEach(([manager, items]) => {
       const totalCount = items.length;
-      // Fila de Jefe
-      const managerRow = worksheet.addRow([`JEFATURA: ${manager}`]);
-      worksheet.mergeCells(`A${managerRow.number}:H${managerRow.number}`);
+      // Fila de Jefe con TOTAL
+      const managerRow = worksheet.addRow([`JEFATURA: ${manager} (TOTAL PENDIENTES: ${totalCount})`]);
+      worksheet.mergeCells(`A${managerRow.number}:G${managerRow.number}`);
       managerRow.getCell(1).fill = managerFill;
       managerRow.getCell(1).font = fontWhite;
       managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
@@ -176,7 +178,6 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           area: item.area,
           specialty: item.specialty,
           status: item.status,
-          managerCount: totalCount,
           description: '' // Se deja vacío para usar la fila combinada abajo
         });
 
@@ -195,17 +196,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
               cell.font = { ...fontBlackBold, color: { argb: 'FF2563EB' } }; // Blue 600
             }
           }
-
-          // Columna de Total Jefe (G) - Destacado en Negritas y Rojo
-          if (cell.address.includes('G' + row.number)) {
-            cell.font = { ...fontBlackBold, color: { argb: 'FFFF0000' } }; // Red
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          }
         });
 
         // FILA DE DESCRIPCIÓN COMBINADA (Para mejor lectura de textos largos)
         const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
-        worksheet.mergeCells(`A${descRow.number}:H${descRow.number}`);
+        worksheet.mergeCells(`A${descRow.number}:G${descRow.number}`);
         const descCell = descRow.getCell(1);
         descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
         descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -296,10 +291,13 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       };
     });
 
-    // Filtrar por RESUELTOS y rango de fecha solicitado (usando fecha de incidencia)
-    const resolvedItems = complaints.filter(c => 
-      c.status === ComplaintStatus.RESUELTO && c.date >= from && c.date <= to
-    );
+    // Filtrar por RESUELTOS y rango de fecha solicitado (asegurando comparación limpia de fechas)
+    const resolvedItems = complaints.filter(c => {
+      const cDate = c.date.trim().substring(0, 10);
+      const fromDate = from.trim().substring(0, 10);
+      const toDate = to.trim().substring(0, 10);
+      return c.status === ComplaintStatus.RESUELTO && cDate >= fromDate && cDate <= toDate;
+    });
 
     const grouped: Record<string, Complaint[]> = {};
     resolvedItems.forEach(c => {
@@ -310,8 +308,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     // Agregar datos agrupados
     Object.entries(grouped).forEach(([manager, items]) => {
-      // Fila de Jefe
-      const managerRow = worksheet.addRow([`JEFATURA: ${manager}`]);
+      const totalCount = items.length;
+      // Fila de Jefe con TOTAL
+      const managerRow = worksheet.addRow([`JEFATURA: ${manager} (TOTAL RESUELTOS: ${totalCount})`]);
       worksheet.mergeCells(`A${managerRow.number}:J${managerRow.number}`);
       managerRow.getCell(1).fill = managerFill;
       managerRow.getCell(1).font = fontWhite;
