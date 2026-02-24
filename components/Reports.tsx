@@ -363,6 +363,30 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         
         const estimatedLines = Math.ceil(item.description.length / 150);
         descRow.height = Math.max(25, estimatedLines * 15);
+
+        // NUEVA FILA: RESPUESTA DEL JEFE
+        const responseText = item.managementResponse || 'SIN RESPUESTA REGISTRADA';
+        const resDate = resolvedDateObj ? resolvedDateObj.toLocaleDateString() : 'N/A';
+        const resTime = resolvedDateObj ? resolvedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+        
+        const respRow = worksheet.addRow([`RESPUESTA JEFE (${resDate} ${resTime}): ${responseText}`]);
+        worksheet.mergeCells(`A${respRow.number}:J${respRow.number}`);
+        const respCell = respRow.getCell(1);
+        respCell.font = { ...fontStandard, bold: true, size: 9, color: { argb: 'FF1E40AF' } }; // Blue 800
+        respCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
+        respCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFEFF6FF' } // Blue 50
+        };
+        respCell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+          left: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+          right: { style: 'thin', color: { argb: 'FFBFDBFE' } }
+        };
+        
+        const estimatedRespLines = Math.ceil(responseText.length / 150);
+        respRow.height = Math.max(25, estimatedRespLines * 15);
       });
 
       worksheet.addRow([]);
