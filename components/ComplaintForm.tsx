@@ -3,15 +3,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Complaint, ComplaintStatus, Priority, NoCallPatient } from '../types';
 import { analyzeComplaint } from '../services/geminiService';
 import { dbService } from '../services/apiService';
+import { getLocalDateInTimezone, getCurrentTimeInTimezone } from '../src/utils/timeUtils';
 
 interface Props { 
   areas: string[]; 
   specialties: string[]; 
   onAdd: (c: Complaint) => void;
   noCallList: NoCallPatient[];
+  timezone: string;
 }
 
-export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCallList }) => {
+export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCallList, timezone }) => {
   const [loading, setLoading] = useState(false);
   const [mappings, setMappings] = useState<any[]>([]);
   
@@ -20,7 +22,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     specialty: '', 
     area: '', managerName: '',
     description: '', status: ComplaintStatus.PENDIENTE, satisfaction: 3,
-    date: new Date().toISOString().split('T')[0]
+    date: getLocalDateInTimezone(timezone)
   });
 
   // Asegurar que el área y especialidad tengan valores por defecto cuando carguen los props
@@ -68,17 +70,18 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       priority: analysis?.priority as Priority || Priority.MEDIA,
       sentiment: analysis?.sentiment,
       suggestedResponse: analysis?.suggestedResponse,
+      registeredAt: getCurrentTimeInTimezone(timezone),
     });
     setLoading(false);
-    setFormData({ 
-      ...formData, 
-      patientName: '', 
-      description: '', 
-      patientPhone: '', 
-      doctorName: '', 
-      satisfaction: 3, 
-      date: new Date().toISOString().split('T')[0] 
-    });
+      setFormData({ 
+        ...formData, 
+        patientName: '', 
+        description: '', 
+        patientPhone: '', 
+        doctorName: '', 
+        satisfaction: 3, 
+        date: getLocalDateInTimezone(timezone) 
+      });
   };
 
   return (

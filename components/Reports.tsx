@@ -4,6 +4,7 @@ import { Complaint, ComplaintStatus, User, NoCallPatient, Priority } from '../ty
 import { dbService } from '../services/apiService';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { getCurrentTimeInTimezone } from '../src/utils/timeUtils';
 
 interface Props { 
   complaints: Complaint[]; 
@@ -12,9 +13,10 @@ interface Props {
   onUpdateFull: (c: Complaint) => void;
   onDelete: (id: string) => void;
   currentUser: User | null;
+  timezone: string;
 }
 
-export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser }) => {
+export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser, timezone }) => {
   const [filterManager, setFilterManager] = useState('Todos');
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
@@ -77,7 +79,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       const updatedData = { ...data, resolvedBy: currentUser?.name || 'Admin' };
       // Si el estado cambia a Resuelto y no tiene fecha de resolución, la asignamos
       if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
-        updatedData.resolvedAt = new Date().toISOString();
+        updatedData.resolvedAt = getCurrentTimeInTimezone(timezone);
       }
       onUpdateFull(updatedData);
       setEditing(null);

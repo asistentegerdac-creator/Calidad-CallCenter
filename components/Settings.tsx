@@ -10,12 +10,13 @@ interface Props {
   currentUser: User | null;
   isOnline: boolean; onConnStatusChange: (s: boolean) => void;
   currentTheme: string; setTheme: (t: string) => void;
+  timezone: string; setTimezone: (tz: string) => void;
   complaints: Complaint[]; setComplaints: (c: Complaint[]) => void;
 }
 
 export const Settings: React.FC<Props> = ({ 
   users, setUsers, isOnline, onConnStatusChange,
-  currentTheme, setTheme, areas, onAddArea, onRemoveArea,
+  currentTheme, setTheme, timezone, setTimezone, areas, onAddArea, onRemoveArea,
   specialties, onAddSpecialty, onRemoveSpecialty,
   complaints, setComplaints
 }) => {
@@ -49,6 +50,17 @@ export const Settings: React.FC<Props> = ({
     { id: 'emerald', name: 'Emerald', color: '#10b981' },
     { id: 'cyber', name: 'Cyber 3D', color: '#d946ef' },
     { id: 'oceanic', name: 'Oceanic', color: '#06b6d4' },
+  ];
+
+  const timezones = [
+    { value: 'America/Lima', label: 'Perú (PET)' },
+    { value: 'America/Mexico_City', label: 'México (CST)' },
+    { value: 'America/Bogota', label: 'Colombia (COT)' },
+    { value: 'America/Santiago', label: 'Chile (CLT)' },
+    { value: 'America/Argentina/Buenos_Aires', label: 'Argentina (ART)' },
+    { value: 'America/New_York', label: 'EE.UU. (EST)' },
+    { value: 'Europe/Madrid', label: 'España (CET)' },
+    { value: 'UTC', label: 'Universal (UTC)' },
   ];
 
   useEffect(() => {
@@ -345,6 +357,29 @@ export const Settings: React.FC<Props> = ({
             {connMessage && <div className="col-span-full mt-4 text-[10px] font-black text-center">{connMessage}</div>}
           </div>
         )}
+      </div>
+
+      {/* ZONA HORARIA */}
+      <div className="glass-card p-10 bg-white shadow-xl">
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
+          <span className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white text-sm">🕒</span>
+          Configuración de Tiempo
+        </h3>
+        <div className="max-w-md space-y-4">
+          <div className="space-y-1">
+            <label className="text-[9px] font-black uppercase text-slate-400">Zona Horaria del Sistema</label>
+            <select 
+              className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" 
+              value={timezone} 
+              onChange={e => setTimezone(e.target.value)}
+            >
+              {timezones.map(tz => (
+                <option key={tz.value} value={tz.value}>{tz.label}</option>
+              ))}
+            </select>
+            <p className="text-[8px] text-slate-400 mt-2 italic">Esta zona horaria se utilizará para registrar la hora exacta de las incidencias y resoluciones.</p>
+          </div>
+        </div>
       </div>
 
       {/* TEMAS */}

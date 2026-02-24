@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Complaint, ComplaintStatus, User, NoCallPatient, Priority } from '../types';
 import { dbService } from '../services/apiService';
+import { getCurrentTimeInTimezone } from '../src/utils/timeUtils';
 
 interface Props { 
   complaints: Complaint[]; 
@@ -12,10 +13,11 @@ interface Props {
   areas: string[];
   specialties: string[];
   onRefresh?: () => void;
+  timezone: string;
 }
 
 export const IncidencesReported: React.FC<Props> = ({ 
-  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh 
+  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh, timezone 
 }) => {
   const [selected, setSelected] = useState<Complaint | null>(null);
   const [editing, setEditing] = useState<Complaint | null>(null);
@@ -95,7 +97,7 @@ export const IncidencesReported: React.FC<Props> = ({
       };
       
       if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
-        updatedData.resolvedAt = new Date().toISOString();
+        updatedData.resolvedAt = getCurrentTimeInTimezone(timezone);
       }
       
       onUpdateFull(updatedData);

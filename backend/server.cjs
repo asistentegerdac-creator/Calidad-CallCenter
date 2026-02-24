@@ -156,6 +156,7 @@ app.get('/api/complaints', async (req, res) => {
       managementResponse: row.management_solution,
       resolvedBy: row.resolved_by_admin,
       resolvedAt: row.resolved_at ? row.resolved_at.toISOString() : undefined,
+      registeredAt: row.registered_at ? row.registered_at.toISOString() : undefined,
       sentiment: row.sentiment_analysis,
       suggestedResponse: row.suggested_response
     })));
@@ -167,11 +168,11 @@ app.post('/api/complaints', async (req, res) => {
   const c = req.body;
   try {
     await pool.query(`
-      INSERT INTO medical_incidences (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, manager_name, complaint_description, current_status, priority_level, satisfaction_score, management_solution, resolved_by_admin, sentiment_analysis, suggested_response, resolved_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      INSERT INTO medical_incidences (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, manager_name, complaint_description, current_status, priority_level, satisfaction_score, management_solution, resolved_by_admin, sentiment_analysis, suggested_response, resolved_at, registered_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       ON CONFLICT (audit_id) DO UPDATE SET 
-        incidence_date=EXCLUDED.incidence_date, patient_name=EXCLUDED.patient_name, patient_phone=EXCLUDED.patient_phone, doctor_name=EXCLUDED.doctor_name, specialty_name=EXCLUDED.specialty_name, area_name=EXCLUDED.area_name, manager_name=EXCLUDED.manager_name, complaint_description=EXCLUDED.complaint_description, current_status=EXCLUDED.current_status, priority_level=EXCLUDED.priority_level, satisfaction_score=EXCLUDED.satisfaction_score, management_solution=EXCLUDED.management_solution, resolved_by_admin=EXCLUDED.resolved_by_admin, sentiment_analysis=EXCLUDED.sentiment_analysis, suggested_response=EXCLUDED.suggested_response, resolved_at=EXCLUDED.resolved_at
-    `, [c.id, c.date, c.patientName, c.patientPhone, c.doctorName, c.specialty, c.area, c.managerName, c.description, c.status, c.priority, c.satisfaction, c.managementResponse, c.resolvedBy, c.sentiment, c.suggestedResponse, c.resolvedAt]);
+        incidence_date=EXCLUDED.incidence_date, patient_name=EXCLUDED.patient_name, patient_phone=EXCLUDED.patient_phone, doctor_name=EXCLUDED.doctor_name, specialty_name=EXCLUDED.specialty_name, area_name=EXCLUDED.area_name, manager_name=EXCLUDED.manager_name, complaint_description=EXCLUDED.complaint_description, current_status=EXCLUDED.current_status, priority_level=EXCLUDED.priority_level, satisfaction_score=EXCLUDED.satisfaction_score, management_solution=EXCLUDED.management_solution, resolved_by_admin=EXCLUDED.resolved_by_admin, sentiment_analysis=EXCLUDED.sentiment_analysis, suggested_response=EXCLUDED.suggested_response, resolved_at=EXCLUDED.resolved_at, registered_at=EXCLUDED.registered_at
+    `, [c.id, c.date, c.patientName, c.patientPhone, c.doctorName, c.specialty, c.area, c.managerName, c.description, c.status, c.priority, c.satisfaction, c.managementResponse, c.resolvedBy, c.sentiment, c.suggestedResponse, c.resolvedAt, c.registeredAt]);
     res.sendStatus(201);
   } catch (e) { res.status(500).send(e.message); }
 });
