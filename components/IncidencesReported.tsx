@@ -165,7 +165,7 @@ export const IncidencesReported: React.FC<Props> = ({
           filtered.map(c => {
             const noLlamar = isNoCall(c.patientPhone, c.patientName);
             return (
-              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all relative flex flex-col min-h-[380px] cursor-pointer group ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''}`} 
+              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[380px] cursor-pointer group hover:scale-[1.03] hover:z-30 ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''}`} 
                    style={{ borderTopColor: c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981' }}
                    onClick={() => setSelected(c)}>
                 <div className="mb-4">
@@ -187,8 +187,8 @@ export const IncidencesReported: React.FC<Props> = ({
                       <p className="text-[12px] font-black text-slate-900 uppercase truncate">Dr. {c.doctorName || 'No especificado'}</p>
                    </div>
                 </div>
-                <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner">
-                   <p className="text-[12px] text-slate-600 font-medium leading-relaxed line-clamp-4">"{c.description}"</p>
+                <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner group-hover:bg-white transition-all group-hover:overflow-y-auto">
+                   <p className="text-[12px] group-hover:text-[16px] text-slate-600 font-medium leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all duration-300">"{c.description}"</p>
                 </div>
                 <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
                    <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(c.status)}`}>{c.status}</span>
