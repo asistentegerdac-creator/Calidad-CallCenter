@@ -719,11 +719,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             </div>
 
             {/* HISTORIAL */}
-            {resolving.responseHistory && resolving.responseHistory.length > 0 && (
+            {((resolving.responseHistory && resolving.responseHistory.length > 0) || resolving.managementResponse) && (
               <div className="space-y-3 mb-6">
-                <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Historial</label>
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Respuesta de Jefatura / Seguimiento</label>
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
-                  {resolving.responseHistory.map((h, i) => (
+                  {resolving.responseHistory && resolving.responseHistory.map((h, i) => (
                     <div key={i} className={`p-4 rounded-2xl text-[10px] border ${h.type === 'auditor' ? 'bg-rose-50 border-rose-100' : 'bg-white border-slate-100'}`}>
                       <div className="flex justify-between mb-1">
                         <span className="font-black uppercase">{h.type === 'auditor' ? 'AUDIT' : 'JEFE'}</span>
@@ -732,6 +732,16 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                       <p className="font-bold">{h.user}: <span className="font-medium text-slate-600">{h.text}</span></p>
                     </div>
                   ))}
+
+                  {/* Compatibilidad: mostrar managementResponse si no está en historial */}
+                  {resolving.managementResponse && (!resolving.responseHistory || !resolving.responseHistory.some(h => h.text === resolving.managementResponse)) && (
+                    <div className="p-4 rounded-2xl text-[10px] border bg-amber-50 border-amber-100">
+                      <div className="flex justify-between mb-1">
+                        <span className="font-black uppercase text-amber-600">ÚLTIMO DESCARGO (ACTUAL)</span>
+                      </div>
+                      <p className="text-slate-600 font-medium italic">"{resolving.managementResponse}"</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

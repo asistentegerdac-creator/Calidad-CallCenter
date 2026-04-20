@@ -320,11 +320,11 @@ export const IncidencesReported: React.FC<Props> = ({
                     </div>
 
                     {/* HISTORIAL DE RESPUESTAS */}
-                    {selected?.responseHistory && selected.responseHistory.length > 0 && (
+                    {((selected?.responseHistory && selected.responseHistory.length > 0) || selected?.managementResponse) && (
                       <div className="space-y-4">
-                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Historial de Seguimiento</label>
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Respuesta de Jefatura / Seguimiento</label>
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                          {selected.responseHistory.map((entry, idx) => (
+                          {selected?.responseHistory && selected.responseHistory.map((entry, idx) => (
                             <div key={idx} className={`p-5 rounded-[1.5rem] border ${entry.type === 'auditor' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
                               <div className="flex justify-between items-center mb-2">
                                 <span className={`text-[9px] font-black uppercase ${entry.type === 'auditor' ? 'text-rose-600' : 'text-slate-600'}`}>
@@ -336,6 +336,16 @@ export const IncidencesReported: React.FC<Props> = ({
                               <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{entry.text}</p>
                             </div>
                           ))}
+                          
+                          {/* Mostrar managementResponse actual si no está en el historial (compatibilidad) */}
+                          {selected?.managementResponse && (!selected.responseHistory || !selected.responseHistory.some(h => h.text === selected.managementResponse)) && (
+                             <div className="p-5 rounded-[1.5rem] border bg-amber-50 border-amber-200">
+                               <div className="flex justify-between items-center mb-2">
+                                 <span className="text-[9px] font-black uppercase text-amber-600">ÚLTIMO DESCARGO (ACTUAL)</span>
+                               </div>
+                               <p className="text-xs text-slate-600 whitespace-pre-wrap">{selected.managementResponse}</p>
+                             </div>
+                          )}
                         </div>
                       </div>
                     )}
