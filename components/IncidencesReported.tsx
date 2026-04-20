@@ -319,8 +319,9 @@ export const IncidencesReported: React.FC<Props> = ({
                        "{selected?.description}"
                     </div>
 
-                    {/* HISTORIAL DE RESPUESTAS */}
-                    {((selected?.responseHistory && selected.responseHistory.length > 0) || selected?.managementResponse) && (
+                    {/* HISTORIAL DE RESPUESTAS - Mostrar solo si hay historial y NO es auditor viendo un caso no resuelto */}
+                    {((selected?.responseHistory && selected.responseHistory.length > 0) || selected?.managementResponse) && 
+                     !(currentUser?.role === 'auditor' && selected?.status !== ComplaintStatus.RESUELTO) && (
                       <div className="space-y-4">
                         <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Respuesta de Jefatura / Seguimiento</label>
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
@@ -350,36 +351,45 @@ export const IncidencesReported: React.FC<Props> = ({
                       </div>
                     )}
 
-                    {/* INTERFAZ PARA AUDITOR */}
+                    {/* INTERFAZ PARA AUDITOR - Solo mostrar si es auditor Y el caso está RESUELTO */}
                     {currentUser?.role === 'auditor' ? (
-                      <div className="space-y-4 pt-6 border-t border-slate-100">
-                        <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl">
-                           <h4 className="text-white text-md font-black uppercase mb-4 flex items-center gap-2">
-                             <span className="w-2 h-4 bg-rose-500 rounded-full"></span>
-                             Panel de Auditoría
-                           </h4>
-                           <textarea 
-                             className="w-full bg-white/5 border border-white/10 focus:border-rose-500 rounded-[1.5rem] p-5 text-sm text-white font-medium outline-none transition-all placeholder:text-white/20 min-h-[120px]"
-                             value={tempResponse}
-                             onChange={e => setTempResponse(e.target.value)}
-                             placeholder="Escriba su observación o dictamen de calidad..."
-                           />
-                           <div className="grid grid-cols-2 gap-4 mt-6">
-                              <button 
-                                onClick={() => handleQuickResolutionSave(false)}
-                                className="py-5 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
-                              >
-                                Aprobar / Cerrar
-                              </button>
-                              <button 
-                                onClick={() => handleQuickResolutionSave(true)}
-                                className="py-5 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20"
-                              >
-                                Observar Caso
-                              </button>
-                           </div>
+                      selected?.status === ComplaintStatus.RESUELTO ? (
+                        <div className="space-y-4 pt-6 border-t border-slate-100">
+                          <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl">
+                             <h4 className="text-white text-md font-black uppercase mb-4 flex items-center gap-2">
+                               <span className="w-2 h-4 bg-rose-500 rounded-full"></span>
+                               Panel de Auditoría
+                             </h4>
+                             <textarea 
+                               className="w-full bg-white/5 border border-white/10 focus:border-rose-500 rounded-[1.5rem] p-5 text-sm text-white font-medium outline-none transition-all placeholder:text-white/20 min-h-[120px]"
+                               value={tempResponse}
+                               onChange={e => setTempResponse(e.target.value)}
+                               placeholder="Escriba su observación o dictamen de calidad..."
+                             />
+                             <div className="grid grid-cols-2 gap-4 mt-6">
+                                <button 
+                                  onClick={() => handleQuickResolutionSave(false)}
+                                  className="py-5 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                                >
+                                  Aprobar / Cerrar
+                                </button>
+                                <button 
+                                  onClick={() => handleQuickResolutionSave(true)}
+                                  className="py-5 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20"
+                                >
+                                  Observar Caso
+                                </button>
+                             </div>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="mt-8 p-8 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2.5rem] text-center">
+                          <p className="text-slate-400 text-xs font-black uppercase tracking-widest leading-loose">
+                            El auditor solo puede revisar casos en estado <span className="text-orange-500 font-black">RESUELTO</span>.<br/> 
+                            Informa a la jefatura si el tiempo de respuesta ha excedido.
+                          </p>
+                        </div>
+                      )
                     ) : ( 
                       /* INTERFAZ PARA JEFES / ADMIN */
                       <>

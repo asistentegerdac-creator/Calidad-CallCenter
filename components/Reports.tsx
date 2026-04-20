@@ -718,8 +718,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                <p className="text-xs text-slate-600 font-bold italic leading-relaxed">"{resolving.description}"</p>
             </div>
 
-            {/* HISTORIAL */}
-            {((resolving.responseHistory && resolving.responseHistory.length > 0) || resolving.managementResponse) && (
+            {/* HISTORIAL - Mostrar solo si hay historial y NO es auditor viendo caso no resuelto */}
+            {((resolving.responseHistory && resolving.responseHistory.length > 0) || resolving.managementResponse) && 
+             !(currentUser?.role === 'auditor' && resolving.status !== ComplaintStatus.RESUELTO) && (
               <div className="space-y-3 mb-6">
                 <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Respuesta de Jefatura / Seguimiento</label>
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
@@ -748,19 +749,27 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
             <div className="space-y-6">
               {currentUser?.role === 'auditor' ? (
-                <div className="space-y-4 bg-slate-900 p-6 rounded-[2rem]">
-                  <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Observación de Auditoría</label>
-                  <textarea 
-                    className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-xs font-bold h-24 outline-none"
-                    value={tempResponse}
-                    onChange={e => setTempResponse(e.target.value)}
-                    placeholder="Ingrese su observación aquí..."
-                  />
-                  <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => handleSave(false)} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px]">Cerrar</button>
-                    <button onClick={() => handleSave(true)} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[10px]">Observar</button>
+                resolving.status === ComplaintStatus.RESUELTO ? (
+                  <div className="space-y-4 bg-slate-900 p-6 rounded-[2rem]">
+                    <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Observación de Auditoría</label>
+                    <textarea 
+                      className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-xs font-bold h-24 outline-none"
+                      value={tempResponse}
+                      onChange={e => setTempResponse(e.target.value)}
+                      placeholder="Ingrese su observación aquí..."
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => handleSave(false)} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px]">Cerrar</button>
+                      <button onClick={() => handleSave(true)} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[10px]">Observar</button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl text-center">
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-loose">
+                      Auditoría disponible solo para casos <br/><span className="text-orange-500">RESUELTOS</span>
+                    </p>
+                  </div>
+                )
               ) : (
                 <>
                   {resolving?.isObserved && (
