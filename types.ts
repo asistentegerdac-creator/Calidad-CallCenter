@@ -12,6 +12,13 @@ export enum Priority {
   CRITICA = 'Crítica'
 }
 
+export interface ResponseHistoryEntry {
+  text: string;
+  user: string;
+  timestamp: string;
+  type: 'manager' | 'auditor';
+}
+
 export interface Complaint {
   id: string;
   date: string;
@@ -31,6 +38,8 @@ export interface Complaint {
   resolvedBy?: string;
   resolvedAt?: string;
   registeredAt?: string;
+  isObserved?: boolean;
+  responseHistory?: ResponseHistoryEntry[];
 }
 
 export interface AreaMapping {
@@ -59,7 +68,7 @@ export interface User {
   username: string;
   password?: string;
   name: string;
-  role: 'admin' | 'agent';
+  role: 'admin' | 'agent' | 'auditor';
   permissions: string[];
 }
 

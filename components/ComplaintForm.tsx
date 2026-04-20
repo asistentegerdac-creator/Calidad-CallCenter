@@ -71,6 +71,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       sentiment: analysis?.sentiment,
       suggestedResponse: analysis?.suggestedResponse,
       registeredAt: getCurrentTimeInTimezone(timezone),
+      responseHistory: [],
     });
     setLoading(false);
       setFormData({ 

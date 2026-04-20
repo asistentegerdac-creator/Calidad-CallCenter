@@ -59,7 +59,7 @@ export const IncidencesReported: React.FC<Props> = ({
       .filter(c => {
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
-        const matchStatus = filterStatus === 'Todos' ? true : c.status === filterStatus;
+        const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
         const matchDateFrom = dateFrom === '' ? true : c.date >= dateFrom;
         const matchDateTo = dateTo === '' ? true : c.date <= dateTo;
         
@@ -70,7 +70,8 @@ export const IncidencesReported: React.FC<Props> = ({
 
   const managers = useMemo(() => Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean))), [complaints]);
 
-  const getStatusBadgeClass = (status: ComplaintStatus) => {
+  const getStatusBadgeClass = (status: ComplaintStatus, isObserved?: boolean) => {
+    if (isObserved && status === ComplaintStatus.PENDIENTE) return 'bg-rose-600 text-white shadow-[0_0_15px_rgba(225,29,72,0.4)] animate-pulse';
     switch(status) {
       case ComplaintStatus.PENDIENTE: return 'bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]';
       case ComplaintStatus.PROCESO: return 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]';
@@ -87,12 +88,55 @@ export const IncidencesReported: React.FC<Props> = ({
     }
   };
 
-  const handleQuickResolutionSave = () => {
+  const handleQuickResolutionSave = (auditObservation?: boolean) => {
     if (selected) {
+      const history = selected.responseHistory || [];
+      const newHistory = [...history];
+      
+      // Si el usuario es auditor
+      if (currentUser?.role === 'auditor') {
+        if (!tempResponse.trim()) return alert("Debe ingresar una observación.");
+        
+        newHistory.push({
+          text: tempResponse,
+          user: currentUser.name,
+          timestamp: getCurrentTimeInTimezone(timezone),
+          type: 'auditor'
+        });
+
+        const isMarkingObserved = auditObservation === true;
+        
+        const updatedData: Complaint = {
+          ...selected,
+          status: isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO,
+          isObserved: isMarkingObserved,
+          responseHistory: newHistory,
+          resolvedBy: isMarkingObserved ? undefined : (selected.resolvedBy || currentUser.name),
+          managementResponse: isMarkingObserved ? '' : selected.managementResponse 
+        };
+
+        onUpdateFull(updatedData);
+        setSelected(null);
+        setTempResponse('');
+        return;
+      }
+
+      // Si el usuario es manager/jefe (o admin)
+      if (!tempResponse.trim()) return alert("Debe ingresar su descargo.");
+
+      newHistory.push({
+        text: tempResponse,
+        user: currentUser?.name || 'Administrador',
+        timestamp: getCurrentTimeInTimezone(timezone),
+        type: 'manager'
+      });
+
       const updatedData: Complaint = {
         ...selected,
         status: tempStatus,
         managementResponse: tempResponse,
+        responseHistory: newHistory,
+        isObserved: false, // Al responder, deja de estar observado
         resolvedBy: currentUser?.name || 'Administrador'
       };
       
@@ -102,6 +146,7 @@ export const IncidencesReported: React.FC<Props> = ({
       
       onUpdateFull(updatedData);
       setSelected(null);
+      setTempResponse('');
     }
   };
 
@@ -150,7 +195,8 @@ export const IncidencesReported: React.FC<Props> = ({
                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Estado</label>
                <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                   <option value="Todos">Todos</option>
-                  {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="Observados">SÓLO OBSERVADOS</option>
+                  {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
                </select>
             </div>
          </div>
@@ -165,13 +211,16 @@ export const IncidencesReported: React.FC<Props> = ({
           filtered.map(c => {
             const noLlamar = isNoCall(c.patientPhone, c.patientName);
             return (
-              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[380px] cursor-pointer group hover:scale-[1.03] hover:z-30 ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''}`} 
-                   style={{ borderTopColor: c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981' }}
+              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[380px] cursor-pointer group hover:scale-[1.03] hover:z-30 ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''} ${c.isObserved ? 'border-rose-600 bg-rose-50/30 ring-2 ring-rose-600 ring-offset-2' : ''}`} 
+                   style={{ borderTopColor: c.isObserved ? '#e11d48' : (c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981') }}
                    onClick={() => setSelected(c)}>
                 <div className="mb-4">
                   <div className="flex justify-between items-start">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
+                    <div className="flex gap-2">
+                       {c.isObserved && <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-rose-600 text-white animate-pulse">OBSERVADO</span>}
+                       <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
+                    </div>
                   </div>
                   <h4 className="text-xl font-black text-slate-900 leading-tight mt-2 group-hover:text-orange-600 transition-colors uppercase">{c.patientName}</h4>
                   <p className="text-[10px] font-bold text-slate-400 mt-1">{c.date}</p>
@@ -265,36 +314,93 @@ export const IncidencesReported: React.FC<Props> = ({
                     <div className="w-full bg-slate-50 border-l-4 border-orange-500 rounded-3xl p-6 text-[13px] font-semibold text-slate-700 italic shadow-inner">
                        "{selected?.description}"
                     </div>
-                    <div className="space-y-4">
-                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Cambiar Estado de Gestión</label>
-                       <div className="flex gap-4">
-                         {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
-                           <button 
-                             key={s} 
-                             type="button"
-                             onClick={() => setTempStatus(s)} 
-                             className={`flex-1 py-4 rounded-[1.5rem] text-[10px] font-black uppercase transition-all border-2 ${tempStatus === s ? 'bg-slate-900 text-white border-slate-900 shadow-xl scale-105' : 'bg-white border-slate-100 text-slate-300'}`}
-                           >
-                             {s}
-                           </button>
-                         ))}
-                       </div>
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Conclusión / Gestión de Empresa</label>
-                       <textarea 
-                         className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] p-6 text-sm font-bold min-h-[180px] outline-none transition-all shadow-inner" 
-                         value={tempResponse} 
-                         onChange={e => setTempResponse(e.target.value)} 
-                         placeholder="Escriba aquí la resolución o los pasos seguidos para solventar el reclamo..." 
-                       />
-                    </div>
-                    <button 
-                      onClick={handleQuickResolutionSave} 
-                      className="w-full py-6 bg-orange-500 text-white rounded-3xl font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-orange-600 transition-all transform hover:-translate-y-1"
-                    >
-                      FINALIZAR GESTIÓN Y CERRAR MODAL
-                    </button>
+
+                    {/* HISTORIAL DE RESPUESTAS */}
+                    {selected?.responseHistory && selected.responseHistory.length > 0 && (
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Historial de Seguimiento</label>
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                          {selected.responseHistory.map((entry, idx) => (
+                            <div key={idx} className={`p-5 rounded-[1.5rem] border ${entry.type === 'auditor' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+                              <div className="flex justify-between items-center mb-2">
+                                <span className={`text-[9px] font-black uppercase ${entry.type === 'auditor' ? 'text-rose-600' : 'text-slate-600'}`}>
+                                  {entry.type === 'auditor' ? 'AUDITORÍA' : 'DESCARGO JEFATURA'}
+                                </span>
+                                <span className="text-[8px] text-slate-400 font-bold">{entry.timestamp}</span>
+                              </div>
+                              <p className="text-[11px] font-bold text-slate-800 mb-1">{entry.user}</p>
+                              <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{entry.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* INTERFAZ PARA AUDITOR */}
+                    {currentUser?.role === 'auditor' ? (
+                      <div className="space-y-4 pt-6 border-t border-slate-100">
+                        <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl">
+                           <h4 className="text-white text-md font-black uppercase mb-4 flex items-center gap-2">
+                             <span className="w-2 h-4 bg-rose-500 rounded-full"></span>
+                             Panel de Auditoría
+                           </h4>
+                           <textarea 
+                             className="w-full bg-white/5 border border-white/10 focus:border-rose-500 rounded-[1.5rem] p-5 text-sm text-white font-medium outline-none transition-all placeholder:text-white/20 min-h-[120px]"
+                             value={tempResponse}
+                             onChange={e => setTempResponse(e.target.value)}
+                             placeholder="Escriba su observación o dictamen de calidad..."
+                           />
+                           <div className="grid grid-cols-2 gap-4 mt-6">
+                              <button 
+                                onClick={() => handleQuickResolutionSave(false)}
+                                className="py-5 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                              >
+                                Aprobar / Cerrar
+                              </button>
+                              <button 
+                                onClick={() => handleQuickResolutionSave(true)}
+                                className="py-5 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20"
+                              >
+                                Observar Caso
+                              </button>
+                           </div>
+                        </div>
+                      </div>
+                    ) : ( 
+                      /* INTERFAZ PARA JEFES / ADMIN */
+                      <>
+                        <div className="space-y-4">
+                           <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Estado de Gestión</label>
+                           <div className="flex gap-4">
+                             {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
+                               <button 
+                                 key={s} 
+                                 type="button"
+                                 onClick={() => setTempStatus(s)} 
+                                 className={`flex-1 py-4 rounded-[1.5rem] text-[10px] font-black uppercase transition-all border-2 ${tempStatus === s ? 'bg-slate-900 text-white border-slate-900 shadow-xl scale-105' : 'bg-white border-slate-100 text-slate-300'}`}
+                               >
+                                 {s}
+                               </button>
+                             ))}
+                           </div>
+                        </div>
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Dictamen / Respuesta de Jefatura</label>
+                           <textarea 
+                             className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] p-6 text-sm font-bold min-h-[180px] outline-none transition-all shadow-inner" 
+                             value={tempResponse} 
+                             onChange={e => setTempResponse(e.target.value)} 
+                             placeholder="Ingrese su nuevo descargo o rectificación..." 
+                           />
+                        </div>
+                        <button 
+                          onClick={() => handleQuickResolutionSave()} 
+                          className="w-full py-6 bg-slate-900 text-white rounded-3xl font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:scale-[1.02] active:scale-95 transition-all"
+                        >
+                          Registrar Descargo y Actualizar
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </div>

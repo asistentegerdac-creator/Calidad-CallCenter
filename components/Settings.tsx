@@ -29,7 +29,7 @@ export const Settings: React.FC<Props> = ({
   
   const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
   const [newMapping, setNewMapping] = useState({ area: '', manager: '' });
-  const [newUser, setNewUser] = useState({ id: '', username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' });
+  const [newUser, setNewUser] = useState({ id: '', username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' | 'auditor' });
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({ type: 'area', value: '' });
 
@@ -283,6 +283,14 @@ export const Settings: React.FC<Props> = ({
              <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" placeholder="Usuario" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
              <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" placeholder="Nombre" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
              <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" type="password" placeholder="Clave" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+             <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Rol de Usuario</label>
+                <select className="w-full p-4 bg-white border rounded-xl font-bold text-xs" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as any})}>
+                   <option value="agent">AGENTE (VISTA LIMITADA)</option>
+                   <option value="admin">ADMINISTRADOR (VISTA TOTAL)</option>
+                   <option value="auditor">AUDITOR (CONTROL DE CALIDAD)</option>
+                </select>
+             </div>
              <div className="flex gap-2">
                 <button onClick={handleCreateOrUpdateUser} className={`flex-1 py-4 text-white rounded-xl font-black text-[10px] uppercase tracking-widest ${editingUserId ? 'bg-amber-600' : 'bg-slate-900'}`}>
                   {editingUserId ? 'Actualizar' : 'Registrar'}

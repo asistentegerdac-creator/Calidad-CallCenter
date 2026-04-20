@@ -73,11 +73,59 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     return groups;
   }, [filtered]);
 
-  const handleSave = () => {
+  const handleSave = (auditObservation?: boolean) => {
     const data = editing || resolving;
     if (data) {
-      const updatedData = { ...data, resolvedBy: currentUser?.name || 'Admin' };
-      // Si el estado cambia a Resuelto y no tiene fecha de resolución, la asignamos
+      const history = data.responseHistory || [];
+      const newHistory = [...history];
+      const userInput = (editing ? editing.managementResponse : resolving?.managementResponse) || '';
+
+      // Si el usuario es auditor
+      if (currentUser?.role === 'auditor') {
+        if (!userInput.trim()) return alert("Debe ingresar una observación.");
+        
+        newHistory.push({
+          text: userInput,
+          user: currentUser.name,
+          timestamp: getCurrentTimeInTimezone(timezone),
+          type: 'auditor'
+        });
+
+        const isMarkingObserved = auditObservation === true;
+        
+        const updatedData: Complaint = {
+          ...data,
+          status: isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO,
+          isObserved: isMarkingObserved,
+          responseHistory: newHistory,
+          resolvedBy: isMarkingObserved ? undefined : (data.resolvedBy || currentUser.name),
+          managementResponse: isMarkingObserved ? '' : data.managementResponse 
+        };
+
+        onUpdateFull(updatedData);
+        setEditing(null);
+        setResolving(null);
+        return;
+      }
+
+      // Si el usuario es manager/jefe (o admin)
+      if (!userInput.trim()) return alert("Debe ingresar su descargo.");
+
+      newHistory.push({
+        text: userInput,
+        user: currentUser?.name || 'Admin',
+        timestamp: getCurrentTimeInTimezone(timezone),
+        type: 'manager'
+      });
+
+      const updatedData: Complaint = { 
+        ...data, 
+        managementResponse: userInput,
+        responseHistory: newHistory,
+        isObserved: false,
+        resolvedBy: currentUser?.name || 'Admin' 
+      };
+      
       if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
         updatedData.resolvedAt = getCurrentTimeInTimezone(timezone);
       }
@@ -364,29 +412,55 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         const estimatedLines = Math.ceil(item.description.length / 150);
         descRow.height = Math.max(25, estimatedLines * 15);
 
-        // NUEVA FILA: RESPUESTA DEL JEFE
-        const responseText = item.managementResponse || 'SIN RESPUESTA REGISTRADA';
-        const resDate = resolvedDateObj ? resolvedDateObj.toLocaleDateString() : 'N/A';
-        const resTime = resolvedDateObj ? resolvedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
-        
-        const respRow = worksheet.addRow([`RESPUESTA JEFE (${resDate} ${resTime}): ${responseText}`]);
-        worksheet.mergeCells(`A${respRow.number}:J${respRow.number}`);
-        const respCell = respRow.getCell(1);
-        respCell.font = { ...fontStandard, bold: true, size: 9, color: { argb: 'FF1E40AF' } }; // Blue 800
-        respCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
-        respCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFEFF6FF' } // Blue 50
-        };
-        respCell.border = {
-          bottom: { style: 'thin', color: { argb: 'FFBFDBFE' } },
-          left: { style: 'thin', color: { argb: 'FFBFDBFE' } },
-          right: { style: 'thin', color: { argb: 'FFBFDBFE' } }
-        };
-        
-        const estimatedRespLines = Math.ceil(responseText.length / 150);
-        respRow.height = Math.max(25, estimatedRespLines * 15);
+        // FILA(S) DE RESPUESTA(S) / AUDITORÍA
+        if (item.responseHistory && item.responseHistory.length > 0) {
+          item.responseHistory.forEach((entry, eIdx) => {
+            const entryRow = worksheet.addRow([`${entry.type === 'auditor' ? 'AUDITORÍA' : 'RESPUESTA JEFE'} (${entry.user} - ${entry.timestamp}): ${entry.text}`]);
+            worksheet.mergeCells(`A${entryRow.number}:J${entryRow.number}`);
+            const entryCell = entryRow.getCell(1);
+            
+            const isAuditor = entry.type === 'auditor';
+            entryCell.font = { ...fontStandard, bold: true, size: 9, color: { argb: isAuditor ? 'FFBE123C' : 'FF1E40AF' } }; 
+            entryCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
+            entryCell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: isAuditor ? 'FFFFF1F2' : 'FFEFF6FF' } 
+            };
+            entryCell.border = {
+              bottom: { style: 'thin', color: { argb: isAuditor ? 'FFFECDD3' : 'FFBFDBFE' } },
+              left: { style: 'thin', color: { argb: isAuditor ? 'FFFECDD3' : 'FFBFDBFE' } },
+              right: { style: 'thin', color: { argb: isAuditor ? 'FFFECDD3' : 'FFBFDBFE' } }
+            };
+            
+            const eLines = Math.ceil(entry.text.length / 150);
+            entryRow.height = Math.max(25, eLines * 15);
+          });
+        } else {
+          // Fallback para datos antiguos sin historial
+          const responseText = item.managementResponse || 'SIN RESPUESTA REGISTRADA';
+          const resDate = resolvedDateObj ? resolvedDateObj.toLocaleDateString() : 'N/A';
+          const resTime = resolvedDateObj ? resolvedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+          
+          const respRow = worksheet.addRow([`RESPUESTA JEFE (${resDate} ${resTime}): ${responseText}`]);
+          worksheet.mergeCells(`A${respRow.number}:J${respRow.number}`);
+          const respCell = respRow.getCell(1);
+          respCell.font = { ...fontStandard, bold: true, size: 9, color: { argb: 'FF1E40AF' } }; 
+          respCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
+          respCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFEFF6FF' } 
+          };
+          respCell.border = {
+            bottom: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+            left: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+            right: { style: 'thin', color: { argb: 'FFBFDBFE' } }
+          };
+          
+          const estimatedRespLines = Math.ceil(responseText.length / 150);
+          respRow.height = Math.max(25, estimatedRespLines * 15);
+        }
       });
 
       worksheet.addRow([]);
@@ -604,7 +678,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                 <textarea className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-[1.5rem] text-sm font-bold h-32 outline-none transition-all" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
               </div>
               <div className="md:col-span-2 flex flex-col md:flex-row gap-4">
-                <button onClick={handleSave} className="flex-1 py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-black transition-all">
+                <button onClick={() => handleSave()} className="flex-1 py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-black transition-all">
                   Guardar Cambios Maestros
                 </button>
                 <button onClick={() => handleDelete(editing.id)} className="py-6 px-10 bg-rose-600 text-white rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl hover:bg-rose-700 transition-all">
@@ -626,50 +700,77 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                <p className="text-[10px] font-black text-orange-500 tracking-[0.2em] mt-2 uppercase">{resolving.id} | {resolving.patientName}</p>
             </div>
             
-            <div className="bg-slate-50 p-6 rounded-3xl mb-8 border border-slate-100 shadow-inner max-h-32 overflow-y-auto">
+            <div className="bg-slate-50 p-6 rounded-3xl mb-4 border border-slate-100 shadow-inner max-h-32 overflow-y-auto">
                <p className="text-xs text-slate-600 font-bold italic leading-relaxed">"{resolving.description}"</p>
             </div>
 
-            <div className="space-y-8">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Actualizar Estado</label>
-                <div className="flex gap-3">
-                  {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
-                    <button 
-                      key={s} 
-                      onClick={() => setResolving({...resolving, status: s})} 
-                      className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase transition-all shadow-sm ${resolving.status === s ? 'bg-slate-900 text-white scale-105' : 'bg-slate-50 text-slate-300'}`}
-                    >
-                      {s}
-                    </button>
+            {/* HISTORIAL */}
+            {resolving.responseHistory && resolving.responseHistory.length > 0 && (
+              <div className="space-y-3 mb-6">
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Historial</label>
+                <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
+                  {resolving.responseHistory.map((h, i) => (
+                    <div key={i} className={`p-4 rounded-2xl text-[10px] border ${h.type === 'auditor' ? 'bg-rose-50 border-rose-100' : 'bg-white border-slate-100'}`}>
+                      <div className="flex justify-between mb-1">
+                        <span className="font-black uppercase">{h.type === 'auditor' ? 'AUDIT' : 'JEFE'}</span>
+                        <span className="text-slate-400">{h.timestamp}</span>
+                      </div>
+                      <p className="font-bold">{h.user}: <span className="font-medium text-slate-600">{h.text}</span></p>
+                    </div>
                   ))}
                 </div>
               </div>
+            )}
 
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Resolución / Descargo Jefatura</label>
-                <textarea 
-                  className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] text-sm font-bold h-40 outline-none transition-all shadow-inner" 
-                  value={resolving.managementResponse || ''} 
-                  onChange={e => setResolving({...resolving, managementResponse: e.target.value})} 
-                  placeholder="Detalle los pasos seguidos para solventar el reclamo..." 
-                />
-              </div>
+            <div className="space-y-6">
+              {currentUser?.role === 'auditor' ? (
+                <div className="space-y-4 bg-slate-900 p-6 rounded-[2rem]">
+                  <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Observación de Auditoría</label>
+                  <textarea 
+                    className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-xs font-bold h-24 outline-none"
+                    value={resolving.managementResponse || ''}
+                    onChange={e => setResolving({...resolving, managementResponse: e.target.value})}
+                    placeholder="Ingrese su observación aquí..."
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => handleSave(false)} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px]">Cerrar</button>
+                    <button onClick={() => handleSave(true)} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[10px]">Observar</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Actualizar Estado</label>
+                    <div className="flex gap-3">
+                      {[ComplaintStatus.PENDIENTE, ComplaintStatus.PROCESO, ComplaintStatus.RESUELTO].map(s => (
+                        <button 
+                          key={s} 
+                          onClick={() => setResolving({...resolving, status: s})} 
+                          className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase transition-all shadow-sm ${resolving.status === s ? 'bg-slate-900 text-white scale-105' : 'bg-slate-50 text-slate-300'}`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              <div className="flex flex-col gap-4">
-                <button 
-                  onClick={handleSave} 
-                  className="w-full py-6 bg-orange-500 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-orange-600 transition-all transform hover:-translate-y-1"
-                >
-                  Finalizar Gestión
-                </button>
-                <button 
-                  onClick={() => handleDelete(resolving.id)} 
-                  className="w-full py-4 bg-rose-50 text-rose-600 rounded-[2rem] font-black uppercase text-[10px] tracking-widest hover:bg-rose-100 transition-all"
-                >
-                  Eliminar permanentemente
-                </button>
-              </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Resolución / Descargo Jefatura</label>
+                    <textarea 
+                      className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] text-sm font-bold h-32 outline-none transition-all shadow-inner" 
+                      value={resolving.managementResponse || ''} 
+                      onChange={e => setResolving({...resolving, managementResponse: e.target.value})} 
+                      placeholder="Ingrese un nuevo descargo..." 
+                    />
+                  </div>
+                  <button 
+                    onClick={() => handleSave()} 
+                    className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:scale-[1.02] transition-all"
+                  >
+                    Actualizar Descargo
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
