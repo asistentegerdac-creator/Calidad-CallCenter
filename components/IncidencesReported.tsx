@@ -40,9 +40,11 @@ export const IncidencesReported: React.FC<Props> = ({
   useEffect(() => {
     if (selected) {
       setTempStatus(selected.status);
-      setTempResponse(selected.managementResponse || '');
+      // Si es auditor o está observado, empezamos con campo vacío para nueva respuesta/observación
+      const shouldClear = currentUser?.role === 'auditor' || selected.isObserved;
+      setTempResponse(shouldClear ? '' : (selected.managementResponse || ''));
     }
-  }, [selected]);
+  }, [selected, currentUser]);
 
   const isNoCall = (phone: string, name: string) => {
     return noCallList.some(p => p.patientPhone === phone || (p.patientName && p.patientName.toLowerCase() === name.toLowerCase()));
@@ -211,7 +213,7 @@ export const IncidencesReported: React.FC<Props> = ({
           filtered.map(c => {
             const noLlamar = isNoCall(c.patientPhone, c.patientName);
             return (
-              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[380px] cursor-pointer group hover:scale-[1.03] hover:z-30 ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''} ${c.isObserved ? 'border-rose-600 bg-rose-50/30 ring-2 ring-rose-600 ring-offset-2' : ''}`} 
+              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[380px] cursor-pointer group hover:scale-[1.05] hover:z-30 ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''} ${c.isObserved ? 'border-rose-600 bg-rose-50/30 ring-2 ring-rose-600 ring-offset-2' : ''}`} 
                    style={{ borderTopColor: c.isObserved ? '#e11d48' : (c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981') }}
                    onClick={() => setSelected(c)}>
                 <div className="mb-4">
@@ -239,9 +241,11 @@ export const IncidencesReported: React.FC<Props> = ({
                 <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner group-hover:bg-white transition-all group-hover:overflow-y-auto">
                    <p className="text-[12px] group-hover:text-[16px] text-slate-600 font-medium leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all duration-300">"{c.description}"</p>
                 </div>
-                <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-                   <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(c.status)}`}>{c.status}</span>
-                   <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2.5 bg-slate-900 text-white rounded-xl text-[9px] uppercase font-black hover:bg-orange-500 transition-all">Editar Ficha</button>
+                <div className="pt-4 border-t border-slate-100 flex justify-between items-center mt-auto">
+                   <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(c.status, c.isObserved)}`}>{c.status}</span>
+                   {currentUser?.role === 'admin' && (
+                     <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2.5 bg-slate-900 text-white rounded-xl text-[9px] uppercase font-black hover:bg-orange-500 transition-all">Editar Ficha</button>
+                   )}
                 </div>
               </div>
             );
@@ -369,6 +373,15 @@ export const IncidencesReported: React.FC<Props> = ({
                     ) : ( 
                       /* INTERFAZ PARA JEFES / ADMIN */
                       <>
+                        {selected?.isObserved && (
+                          <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl mb-4 flex items-center gap-3">
+                             <span className="text-xl">⚠️</span>
+                             <div>
+                               <p className="text-[10px] font-black text-rose-600 uppercase">Incidencia Observada por Auditoría</p>
+                               <p className="text-[9px] font-bold text-rose-500 uppercase tracking-wider">Debe ingresar un nuevo descargo detallado.</p>
+                             </div>
+                          </div>
+                        )}
                         <div className="space-y-4">
                            <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Estado de Gestión</label>
                            <div className="flex gap-4">

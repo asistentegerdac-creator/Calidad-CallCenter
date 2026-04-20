@@ -31,10 +31,19 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [resolving, setResolving] = useState<Complaint | null>(null);
+  const [tempResponse, setTempResponse] = useState('');
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
   }, []);
+
+  useEffect(() => {
+    if (resolving) {
+      // Si es auditor o está observado, empezamos con campo vacío para nueva respuesta/observación
+      const shouldClear = currentUser?.role === 'auditor' || resolving.isObserved;
+      setTempResponse(shouldClear ? '' : (resolving.managementResponse || ''));
+    }
+  }, [resolving, currentUser]);
 
   const isNoCall = (phone: string, name: string) => {
     return noCallList.some(p => p.patientPhone === phone || (p.patientName && p.patientName.toLowerCase() === name.toLowerCase()));
@@ -56,7 +65,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       .filter(c => {
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
-        const matchStatus = filterStatus === 'Todos' ? true : c.status === filterStatus;
+        const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
         const matchDate = c.date >= dateFrom && c.date <= dateTo;
         return matchManager && matchArea && matchStatus && matchDate;
       })
@@ -78,7 +87,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     if (data) {
       const history = data.responseHistory || [];
       const newHistory = [...history];
-      const userInput = (editing ? editing.managementResponse : resolving?.managementResponse) || '';
+      const userInput = tempResponse || '';
 
       // Si el usuario es auditor
       if (currentUser?.role === 'auditor') {
@@ -105,6 +114,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         onUpdateFull(updatedData);
         setEditing(null);
         setResolving(null);
+        setTempResponse('');
         return;
       }
 
@@ -132,6 +142,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       onUpdateFull(updatedData);
       setEditing(null);
       setResolving(null);
+      setTempResponse('');
     }
   };
 
@@ -522,6 +533,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Estado</label>
             <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
               <option value="Todos">Todos</option>
+              <option value="Observados">SÓLO OBSERVADOS</option>
               {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
@@ -552,11 +564,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {items.map(c => (
-                    <tr 
-                      key={c.id} 
-                      onClick={() => setResolving({...c})} 
-                      className="hover:bg-slate-50 transition-colors group cursor-pointer"
-                    >
+                      <tr 
+                        key={c.id} 
+                        onClick={() => setResolving({...c})} 
+                        className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                      >
                       <td className="px-4 py-6">
                         <p className="font-black text-slate-900 text-[11px] whitespace-nowrap">{c.date}</p>
                         <p className="text-[8px] text-slate-400 font-bold">{c.id}</p>
@@ -577,12 +589,14 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                         </span>
                       </td>
                       <td className="px-4 py-6 text-right">
-                         <button 
-                            onClick={(e) => { e.stopPropagation(); setEditing({...c}); }} 
-                            className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 transition-all shadow-md"
-                          >
-                            Editar
-                          </button>
+                         {currentUser?.role === 'admin' && (
+                           <button 
+                              onClick={(e) => { e.stopPropagation(); setEditing({...c}); }} 
+                              className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 transition-all shadow-md"
+                            >
+                              Editar
+                            </button>
+                         )}
                       </td>
                     </tr>
                   ))}
@@ -728,8 +742,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                   <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Observación de Auditoría</label>
                   <textarea 
                     className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-xs font-bold h-24 outline-none"
-                    value={resolving.managementResponse || ''}
-                    onChange={e => setResolving({...resolving, managementResponse: e.target.value})}
+                    value={tempResponse}
+                    onChange={e => setTempResponse(e.target.value)}
                     placeholder="Ingrese su observación aquí..."
                   />
                   <div className="grid grid-cols-2 gap-3">
@@ -739,6 +753,15 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                 </div>
               ) : (
                 <>
+                  {resolving?.isObserved && (
+                    <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl mb-4 flex items-center gap-3">
+                       <span className="text-xl">⚠️</span>
+                       <div>
+                         <p className="text-[10px] font-black text-rose-600 uppercase">Incidencia Observada por Auditoría</p>
+                         <p className="text-[9px] font-bold text-rose-500 uppercase tracking-wider">Debe ingresar un nuevo descargo detallado.</p>
+                       </div>
+                    </div>
+                  )}
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Actualizar Estado</label>
                     <div className="flex gap-3">
@@ -758,8 +781,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Resolución / Descargo Jefatura</label>
                     <textarea 
                       className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] text-sm font-bold h-32 outline-none transition-all shadow-inner" 
-                      value={resolving.managementResponse || ''} 
-                      onChange={e => setResolving({...resolving, managementResponse: e.target.value})} 
+                      value={tempResponse} 
+                      onChange={e => setTempResponse(e.target.value)} 
                       placeholder="Ingrese un nuevo descargo..." 
                     />
                   </div>
