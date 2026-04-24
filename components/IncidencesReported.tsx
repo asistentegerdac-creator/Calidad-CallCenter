@@ -14,10 +14,11 @@ interface Props {
   specialties: string[];
   onRefresh?: () => void;
   timezone: string;
+  onPreviewImage?: (img: string) => void;
 }
 
 export const IncidencesReported: React.FC<Props> = ({ 
-  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh, timezone 
+  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh, timezone, onPreviewImage 
 }) => {
   const [selected, setSelected] = useState<Complaint | null>(null);
   const [editing, setEditing] = useState<Complaint | null>(null);
@@ -137,7 +138,7 @@ export const IncidencesReported: React.FC<Props> = ({
           status: isClosing ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO),
           isObserved: isMarkingObserved,
           responseHistory: newHistory,
-          evidenceImages: selected.evidenceImages, // Preserve existing images
+          evidenceImages: [...(selected.evidenceImages || []), ...evidenceImages], // Include new images from state
           resolvedBy: isMarkingObserved ? undefined : (selected.resolvedBy || currentUser.name),
           managementResponse: isMarkingObserved ? '' : selected.managementResponse 
         };
@@ -254,6 +255,7 @@ export const IncidencesReported: React.FC<Props> = ({
                   <div className="flex justify-between items-start">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
                     <div className="flex gap-2">
+                       {c.evidenceImages && c.evidenceImages.length > 0 && <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-blue-600 text-white flex items-center gap-1">🖼️ SUSTENTO</span>}
                        {c.isObserved && <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-rose-600 text-white animate-pulse">OBSERVADO</span>}
                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
                     </div>
@@ -274,6 +276,22 @@ export const IncidencesReported: React.FC<Props> = ({
                    </div>
                 </div>
                 <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner group-hover:bg-white transition-all group-hover:overflow-y-auto">
+                   {c.evidenceImages && c.evidenceImages.length > 0 && (
+                     <div className="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">
+                       {c.evidenceImages.slice(0, 3).map((img, idx) => (
+                         <img 
+                           key={idx} 
+                           src={img} 
+                           className="w-10 h-10 object-cover rounded-lg border border-slate-200 cursor-zoom-in" 
+                           alt="Sustento" 
+                           onClick={(e) => { e.stopPropagation(); onPreviewImage?.(img); }}
+                         />
+                       ))}
+                       {c.evidenceImages.length > 3 && (
+                         <div className="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center text-[8px] font-black text-slate-500">+{c.evidenceImages.length - 3}</div>
+                       )}
+                     </div>
+                   )}
                    <p className="text-[12px] group-hover:text-[16px] text-slate-600 font-medium leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all duration-300">"{c.description}"</p>
                 </div>
                 <div className="pt-4 border-t border-slate-100 flex justify-between items-center mt-auto">
@@ -348,6 +366,19 @@ export const IncidencesReported: React.FC<Props> = ({
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Descripción del Incidente</label>
                       <textarea className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-[1.5rem] text-sm font-bold h-32 transition-all outline-none" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
                     </div>
+                    {editing.evidenceImages && editing.evidenceImages.length > 0 && (
+                      <div className="md:col-span-2 space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Imágenes de Sustento Existentes</label>
+                        <div className="flex flex-wrap gap-2">
+                          {editing.evidenceImages.map((img, idx) => (
+                            <div key={idx} className="relative group">
+                              <img src={img} alt="Sustento" className="w-20 h-20 object-cover rounded-xl border border-slate-200" />
+                              <button onClick={() => setEditing({...editing, evidenceImages: editing.evidenceImages?.filter((_, i) => i !== idx)})} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-100">×</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="md:col-span-2 flex flex-col md:flex-row gap-4 mt-6">
                       <button onClick={handleFullEditSave} className="flex-1 py-5 bg-slate-900 text-white rounded-3xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl hover:bg-black transition-all">Guardar Cambios Maestros</button>
                       <button onClick={() => handleDelete(editing.id)} className="py-5 px-10 bg-rose-600 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-rose-700 transition-all">Eliminar Queja</button>
@@ -369,7 +400,7 @@ export const IncidencesReported: React.FC<Props> = ({
                            <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
                            <div className="flex flex-wrap gap-2">
                               {selected.evidenceImages.map((img, idx) => (
-                                <img key={idx} src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border border-slate-100 hover:scale-105 transition-all cursor-zoom-in" onClick={() => window.open(img)} />
+                                <img key={idx} src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border border-slate-100 hover:scale-105 transition-all cursor-zoom-in" onClick={() => onPreviewImage?.(img)} />
                               ))}
                            </div>
                         </div>

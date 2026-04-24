@@ -14,9 +14,10 @@ interface Props {
   onDelete: (id: string) => void;
   currentUser: User | null;
   timezone: string;
+  onPreviewImage?: (img: string) => void;
 }
 
-export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser, timezone }) => {
+export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser, timezone, onPreviewImage }) => {
   const [filterManager, setFilterManager] = useState('Todos');
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
@@ -40,13 +41,16 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   }, []);
 
   useEffect(() => {
-    if (resolving) {
-      setEvidenceImages(resolving.evidenceImages || []);
+    if (resolving || editing) {
+      setEvidenceImages([]); // Initialize as empty for new uploads
       // Si es auditor o está observado, empezamos con campo vacío para nueva respuesta/observación
-      const shouldClear = currentUser?.role === 'auditor' || resolving.isObserved;
-      setTempResponse(shouldClear ? '' : (resolving.managementResponse || ''));
+      const current = resolving || editing;
+      if (current) {
+        const shouldClear = currentUser?.role === 'auditor' || current.isObserved;
+        setTempResponse(shouldClear ? '' : (current.managementResponse || ''));
+      }
     }
-  }, [resolving, currentUser]);
+  }, [resolving, editing, currentUser]);
 
   const isNoCall = (phone: string, name: string) => {
     return noCallList.some(p => p.patientPhone === phone || (p.patientName && p.patientName.toLowerCase() === name.toLowerCase()));
@@ -100,14 +104,21 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     return groups;
   }, [filtered]);
 
-  const handleSave = (auditAction?: 'observe' | 'close' | 'approve') => {
-    const data = editing || resolving;
-    if (data) {
-      if (data.status === ComplaintStatus.CERRADO && currentUser?.role !== 'admin') {
+  const handleFullEditSave = () => {
+    if (editing) {
+      onUpdateFull(editing);
+      setEditing(null);
+      setResolving(null);
+    }
+  };
+
+  const handleResolutionSave = (auditAction?: 'observe' | 'close' | 'approve') => {
+    if (resolving) {
+      if (resolving.status === ComplaintStatus.CERRADO && currentUser?.role !== 'admin') {
         return alert("Este caso ya está cerrado.");
       }
 
-      const history = data.responseHistory || [];
+      const history = resolving.responseHistory || [];
       const newHistory = [...history];
       const userInput = tempResponse || '';
 
@@ -126,13 +137,13 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         const isClosing = auditAction === 'close';
         
         const updatedData: Complaint = {
-          ...data,
+          ...resolving,
           status: isClosing ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO),
           isObserved: isMarkingObserved,
           responseHistory: newHistory,
-          evidenceImages: evidenceImages, // Asegurar que se guarden si se agregaron
-          resolvedBy: isMarkingObserved ? undefined : (data.resolvedBy || currentUser.name),
-          managementResponse: isMarkingObserved ? '' : data.managementResponse 
+          evidenceImages: [...(resolving.evidenceImages || []), ...evidenceImages], // Include new images
+          resolvedBy: isMarkingObserved ? undefined : (resolving.resolvedBy || currentUser.name),
+          managementResponse: isMarkingObserved ? '' : resolving.managementResponse 
         };
 
         onUpdateFull(updatedData);
@@ -153,11 +164,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       });
 
       const updatedData: Complaint = { 
-        ...data, 
+        ...resolving, 
         managementResponse: userInput,
         responseHistory: newHistory,
         isObserved: false,
-        evidenceImages: evidenceImages,
+        evidenceImages: [...(resolving.evidenceImages || []), ...evidenceImages], // Support cumulative images
         resolvedBy: currentUser?.name || 'Admin' 
       };
       
@@ -618,7 +629,23 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                         {isNoCall(c.patientPhone, c.patientName) && <span className="text-rose-600 text-[7px] font-black block mt-1">📵 RESTRINGIDO</span>}
                       </td>
                       <td className="px-4 py-6">
-                        <p className="text-[10px] text-slate-500 line-clamp-2 italic">"{c.description}"</p>
+                        <div className="flex flex-col gap-2">
+                          <p className="text-[10px] text-slate-500 line-clamp-2 italic">"{c.description}"</p>
+                          {c.evidenceImages && c.evidenceImages.length > 0 && (
+                            <div className="flex gap-1 overflow-x-auto">
+                               {c.evidenceImages.slice(0, 3).map((img, idx) => (
+                                 <img 
+                                   key={idx} 
+                                   src={img} 
+                                   className="w-6 h-6 object-cover rounded border border-slate-200 cursor-zoom-in" 
+                                   alt="Sustento" 
+                                   onClick={(e) => { e.stopPropagation(); onPreviewImage?.(img); }}
+                                 />
+                               ))}
+                               {c.evidenceImages.length > 3 && <span className="text-[7px] text-slate-400 font-black">+{c.evidenceImages.length - 3}</span>}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-6">
                         <div className="flex flex-col gap-1">
@@ -632,6 +659,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                           {c.isObserved && (
                             <span className="bg-rose-600 text-white text-[7px] font-black px-2 py-0.5 rounded text-center uppercase tracking-tighter">
                               ⚠️ Observado
+                            </span>
+                          )}
+                          {c.evidenceImages && c.evidenceImages.length > 0 && (
+                            <span className="bg-blue-600 text-white text-[7px] font-black px-2 py-0.5 rounded text-center uppercase tracking-tighter">
+                              🖼️ Con Sustento
                             </span>
                           )}
                         </div>
@@ -735,12 +767,25 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div className="space-y-1 md:col-span-2">
+              <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Descripción Original</label>
                 <textarea className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-[1.5rem] text-sm font-bold h-32 outline-none transition-all" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
               </div>
+              {editing.evidenceImages && editing.evidenceImages.length > 0 && (
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Imágenes de Sustento Existentes</label>
+                  <div className="flex flex-wrap gap-2">
+                    {editing.evidenceImages.map((img, idx) => (
+                      <div key={idx} className="relative group cursor-zoom-in" onClick={() => onPreviewImage?.(img)}>
+                        <img src={img} alt="Sustento" className="w-20 h-20 object-cover rounded-xl border border-slate-200" />
+                        <button onClick={(e) => { e.stopPropagation(); setEditing({...editing, evidenceImages: editing.evidenceImages?.filter((_, i) => i !== idx)}); }} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-100">×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="md:col-span-2 flex flex-col md:flex-row gap-4">
-                <button onClick={() => handleSave()} className="flex-1 py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-black transition-all">
+                <button onClick={() => handleFullEditSave()} className="flex-1 py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-black transition-all">
                   Guardar Cambios Maestros
                 </button>
                 <button onClick={() => handleDelete(editing.id)} className="py-6 px-10 bg-rose-600 text-white rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl hover:bg-rose-700 transition-all">
@@ -781,7 +826,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                       src={img} 
                       alt="Evidencia" 
                       className="w-16 h-16 object-cover rounded-xl border border-slate-200 cursor-zoom-in hover:scale-105 transition-all" 
-                      onClick={() => window.open(img)} 
+                      onClick={() => onPreviewImage?.(img)} 
                     />
                   ))}
                 </div>
@@ -829,9 +874,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                       placeholder="Ingrese su observación aquí..."
                     />
                     <div className="grid grid-cols-3 gap-2">
-                      <button onClick={() => handleSave('approve')} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[9px]">Aprobar</button>
-                      <button onClick={() => handleSave('observe')} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[9px]">Observar</button>
-                      <button onClick={() => handleSave('close')} className="py-4 bg-slate-700 text-white rounded-xl font-black uppercase text-[9px]">Cerrar Caso</button>
+                      <button onClick={() => handleResolutionSave('approve')} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[9px]">Aprobar</button>
+                      <button onClick={() => handleResolutionSave('observe')} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[9px]">Observar</button>
+                      <button onClick={() => handleResolutionSave('close')} className="py-4 bg-slate-700 text-white rounded-xl font-black uppercase text-[9px]">Cerrar Caso</button>
                     </div>
                   </div>
                 ) : (
@@ -880,10 +925,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                   <div className="space-y-3">
                      <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
                      <div className="flex flex-wrap gap-3 mb-4">
-                       {evidenceImages.map((img, idx) => (
-                         <div key={idx} className="relative group">
+                        {evidenceImages.map((img, idx) => (
+                         <div key={idx} className="relative group cursor-zoom-in" onClick={() => onPreviewImage?.(img)}>
                            <img src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border-2 border-slate-200" />
-                           <button onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                           <button onClick={(e) => { e.stopPropagation(); setEvidenceImages(prev => prev.filter((_, i) => i !== idx)); }} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                          </div>
                        ))}
                        <label className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all text-slate-300 hover:text-blue-500 hover:border-blue-500">
@@ -894,7 +939,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                   </div>
 
                   <button 
-                    onClick={() => handleSave()} 
+                    onClick={() => handleResolutionSave()} 
                     className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:scale-[1.02] transition-all"
                   >
                     Actualizar Descargo

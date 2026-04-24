@@ -7,6 +7,7 @@ import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { IncidencesReported } from './components/IncidencesReported';
 import { NoCallList } from './components/NoCallList';
+import { AnalyticsView } from './components/AnalyticsView';
 import { dbService } from './services/apiService';
 
 const App: React.FC = () => {
@@ -208,8 +209,25 @@ const App: React.FC = () => {
     setIsSidebarOpen(false); // Cerrar en móviles al navegar
   };
 
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
   return (
     <div className="min-h-screen flex transition-all duration-500 overflow-x-hidden relative">
+      {/* MODAL GLOBAL DE PREVISUALIZACIÓN DE IMAGEN */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 md:p-20 group cursor-zoom-out"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button className="absolute top-10 right-10 text-white text-4xl font-black group-hover:scale-125 transition-all">✕</button>
+          <img 
+            src={previewImage} 
+            alt="Preview" 
+            className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-90 duration-300 pointer-events-none"
+          />
+        </div>
+      )}
+
       {!isLoggedIn ? (
         <div className="min-h-screen w-full flex items-center justify-center p-4">
           <div className="glass-card p-12 w-full max-w-md shadow-2xl bg-white">
@@ -283,6 +301,7 @@ const App: React.FC = () => {
                 { id: 'incidences', label: 'Gestión', icon: '📑' },
                 { id: 'new-incidence', label: 'Reportar', icon: '➕' },
                 { id: 'reports', label: 'Informes', icon: '📋' },
+                { id: 'analytics', label: 'Reportes', icon: '📊' },
                 { id: 'no-call', label: 'Lista Negra', icon: '📵' },
                 ...(currentUser?.role === 'admin' ? [{ id: 'settings', label: 'Ajustes', icon: '⚙️' }] : [])
               ].map((item) => (
@@ -304,9 +323,10 @@ const App: React.FC = () => {
           <main className="flex-1 w-full min-w-0 p-4 md:p-10 overflow-x-hidden">
             <div className="max-w-7xl mx-auto pt-12 md:pt-0">
               {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
-              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} />}
+              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} />}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} />}
-              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} />}
+              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} />}
+              {activeView === 'analytics' && <AnalyticsView complaints={complaints} />}
               {activeView === 'no-call' && <NoCallList noCallList={noCallList} isOnline={isOnline} onRefresh={autoSync} />}
               {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} timezone={timezone} setTimezone={setTimezone} />}
             </div>
