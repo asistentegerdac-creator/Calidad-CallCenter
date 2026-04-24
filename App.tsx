@@ -216,14 +216,14 @@ const App: React.FC = () => {
       {/* MODAL GLOBAL DE PREVISUALIZACIÓN DE IMAGEN */}
       {previewImage && (
         <div 
-          className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 md:p-20 group cursor-zoom-out"
+          className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 md:p-10 group cursor-zoom-out"
           onClick={() => setPreviewImage(null)}
         >
-          <button className="absolute top-10 right-10 text-white text-4xl font-black group-hover:scale-125 transition-all">✕</button>
+          <button className="absolute top-10 right-10 text-white text-4xl font-black group-hover:scale-125 transition-all outline-none">✕</button>
           <img 
             src={previewImage} 
             alt="Preview" 
-            className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-90 duration-300 pointer-events-none"
+            className="max-w-[95%] max-h-[95%] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] animate-in zoom-in-95 duration-300 pointer-events-none border border-white/10"
           />
         </div>
       )}

@@ -23,8 +23,23 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     area: '', managerName: '',
     description: '', status: ComplaintStatus.PENDIENTE, satisfaction: 3,
     date: getLocalDateInTimezone(timezone),
-    dimension: DIMENSIONS[0]
+    dimension: DIMENSIONS[0],
+    evidenceImages: [] as string[]
   });
+
+  const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      Array.from(e.target.files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setEvidenceImages(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  };
 
   // Asegurar que el área y especialidad tengan valores por defecto cuando carguen los props
   useEffect(() => {
@@ -73,6 +88,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       suggestedResponse: analysis?.suggestedResponse,
       registeredAt: getCurrentTimeInTimezone(timezone),
       responseHistory: [],
+      evidenceImages: evidenceImages
     });
     setLoading(false);
       setFormData({ 
@@ -84,6 +100,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
         satisfaction: 3, 
         date: getLocalDateInTimezone(timezone) 
       });
+      setEvidenceImages([]);
   };
 
   return (
@@ -154,6 +171,22 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
         <div className="space-y-2">
           <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Relato de la Incidencia</label>
           <textarea required className="w-full bg-slate-50 border rounded-2xl p-6 font-bold text-sm h-32 focus:ring-2 ring-amber-500 outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Describa detalladamente lo ocurrido para el análisis de IA..." />
+        </div>
+
+        <div className="space-y-3">
+            <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
+            <div className="flex flex-wrap gap-3">
+              {evidenceImages.map((img, idx) => (
+                <div key={idx} className="relative group">
+                  <img src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border-2 border-slate-200" />
+                  <button type="button" onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-100 transition-opacity">×</button>
+                </div>
+              ))}
+              <label className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all text-slate-300 hover:text-blue-500 hover:border-blue-500">
+                <span className="text-lg font-bold">+</span>
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+              </label>
+            </div>
         </div>
 
         <div className="flex flex-col md:flex-row gap-8 items-center justify-between p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
