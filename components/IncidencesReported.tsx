@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Complaint, ComplaintStatus, User, NoCallPatient, Priority } from '../types';
+import { Complaint, ComplaintStatus, User, NoCallPatient, Priority, DIMENSIONS } from '../types';
 import { dbService } from '../services/apiService';
 import { getCurrentTimeInTimezone } from '../src/utils/timeUtils';
 
@@ -23,15 +23,30 @@ export const IncidencesReported: React.FC<Props> = ({
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setEvidenceImages(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+  
   // Filtros
   const [filterManager, setFilterManager] = useState('Todos');
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
+  const [filterDimension, setFilterDimension] = useState('Todas');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   const [tempStatus, setTempStatus] = useState<ComplaintStatus>(ComplaintStatus.PENDIENTE);
   const [tempResponse, setTempResponse] = useState('');
+  const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -43,6 +58,7 @@ export const IncidencesReported: React.FC<Props> = ({
       // Si es auditor o está observado, empezamos con campo vacío para nueva respuesta/observación
       const shouldClear = currentUser?.role === 'auditor' || selected.isObserved;
       setTempResponse(shouldClear ? '' : (selected.managementResponse || ''));
+      setEvidenceImages([]);
     }
   }, [selected, currentUser]);
 
@@ -55,6 +71,7 @@ export const IncidencesReported: React.FC<Props> = ({
       [ComplaintStatus.PENDIENTE]: 0,
       [ComplaintStatus.PROCESO]: 1,
       [ComplaintStatus.RESUELTO]: 2,
+      [ComplaintStatus.CERRADO]: 3,
     };
 
     return [...complaints]
@@ -62,13 +79,14 @@ export const IncidencesReported: React.FC<Props> = ({
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
         const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
+        const matchDimension = filterDimension === 'Todas' ? true : c.dimension === filterDimension;
         const matchDateFrom = dateFrom === '' ? true : c.date >= dateFrom;
         const matchDateTo = dateTo === '' ? true : c.date <= dateTo;
         
-        return matchManager && matchArea && matchStatus && matchDateFrom && matchDateTo;
+        return matchManager && matchArea && matchStatus && matchDimension && matchDateFrom && matchDateTo;
       })
-      .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-  }, [complaints, filterManager, filterArea, filterStatus, dateFrom, dateTo]);
+      .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
+  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo]);
 
   const managers = useMemo(() => Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean))), [complaints]);
 
@@ -78,6 +96,7 @@ export const IncidencesReported: React.FC<Props> = ({
       case ComplaintStatus.PENDIENTE: return 'bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]';
       case ComplaintStatus.PROCESO: return 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]';
       case ComplaintStatus.RESUELTO: return 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]';
+      case ComplaintStatus.CERRADO: return 'bg-slate-900 text-white shadow-[0_0_15px_rgba(15,23,42,0.4)]';
       default: return 'bg-slate-400 text-white';
     }
   };
@@ -90,8 +109,12 @@ export const IncidencesReported: React.FC<Props> = ({
     }
   };
 
-  const handleQuickResolutionSave = (auditObservation?: boolean) => {
+  const handleQuickResolutionSave = (auditAction?: 'observe' | 'close' | 'approve') => {
     if (selected) {
+      if (selected.status === ComplaintStatus.CERRADO && currentUser?.role !== 'admin') {
+        return alert("Este caso ya está cerrado y no se puede modificar.");
+      }
+
       const history = selected.responseHistory || [];
       const newHistory = [...history];
       
@@ -106,13 +129,15 @@ export const IncidencesReported: React.FC<Props> = ({
           type: 'auditor'
         });
 
-        const isMarkingObserved = auditObservation === true;
+        const isMarkingObserved = auditAction === 'observe';
+        const isClosing = auditAction === 'close';
         
         const updatedData: Complaint = {
           ...selected,
-          status: isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO,
+          status: isClosing ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO),
           isObserved: isMarkingObserved,
           responseHistory: newHistory,
+          evidenceImages: selected.evidenceImages, // Preserve existing images
           resolvedBy: isMarkingObserved ? undefined : (selected.resolvedBy || currentUser.name),
           managementResponse: isMarkingObserved ? '' : selected.managementResponse 
         };
@@ -139,7 +164,8 @@ export const IncidencesReported: React.FC<Props> = ({
         managementResponse: tempResponse,
         responseHistory: newHistory,
         isObserved: false, // Al responder, deja de estar observado
-        resolvedBy: currentUser?.name || 'Administrador'
+        resolvedBy: currentUser?.name || 'Administrador',
+        evidenceImages: [...(selected.evidenceImages || []), ...evidenceImages]
       };
       
       if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
@@ -149,6 +175,7 @@ export const IncidencesReported: React.FC<Props> = ({
       onUpdateFull(updatedData);
       setSelected(null);
       setTempResponse('');
+      setEvidenceImages([]);
     }
   };
 
@@ -170,7 +197,7 @@ export const IncidencesReported: React.FC<Props> = ({
          </div>
 
          {/* Barra de Filtros */}
-         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
             <div className="space-y-1">
                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Desde</label>
                <input type="date" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -199,6 +226,13 @@ export const IncidencesReported: React.FC<Props> = ({
                   <option value="Todos">Todos</option>
                   <option value="Observados">SÓLO OBSERVADOS</option>
                   {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
+               </select>
+            </div>
+            <div className="space-y-1">
+               <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
+               <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={filterDimension} onChange={e => setFilterDimension(e.target.value)}>
+                  <option value="Todas">Todas</option>
+                  {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
                </select>
             </div>
          </div>
@@ -230,6 +264,7 @@ export const IncidencesReported: React.FC<Props> = ({
                 </div>
                 <div className="space-y-3 mb-4">
                    <div className="flex flex-wrap gap-2">
+                      <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 uppercase">{c.dimension}</span>
                       <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 uppercase">{c.area}</span>
                       {c.specialty && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 uppercase">{c.specialty}</span>}
                    </div>
@@ -297,7 +332,13 @@ export const IncidencesReported: React.FC<Props> = ({
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Médico Responsable</label>
                       <input className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" value={editing.doctorName} onChange={e => setEditing({...editing, doctorName: e.target.value})} />
                     </div>
-                    <div className="space-y-1 col-span-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Dimensión</label>
+                      <select className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold outline-none" value={editing.dimension} onChange={e => setEditing({...editing, dimension: e.target.value})}>
+                        {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1 md:col-span-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Nivel de Prioridad</label>
                       <select className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" value={editing.priority} onChange={e => setEditing({...editing, priority: e.target.value as Priority})}>
                         {Object.values(Priority).map(p => <option key={p} value={p}>{p}</option>)}
@@ -315,8 +356,24 @@ export const IncidencesReported: React.FC<Props> = ({
                   </div>
                 ) : (
                   <>
-                    <div className="w-full bg-slate-50 border-l-4 border-orange-500 rounded-3xl p-6 text-[13px] font-semibold text-slate-700 italic shadow-inner">
-                       "{selected?.description}"
+                    <div className="space-y-4">
+                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 italic">
+                         <h4 className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Dimensión de Calidad</h4>
+                         <p className="text-sm font-black text-slate-800 mb-3">{selected?.dimension}</p>
+                         <h4 className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Relato Original</h4>
+                         <p className="text-sm text-slate-700 leading-relaxed">"{selected?.description}"</p>
+                      </div>
+
+                      {selected?.evidenceImages && selected.evidenceImages.length > 0 && (
+                        <div className="space-y-2">
+                           <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
+                           <div className="flex flex-wrap gap-2">
+                              {selected.evidenceImages.map((img, idx) => (
+                                <img key={idx} src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border border-slate-100 hover:scale-105 transition-all cursor-zoom-in" onClick={() => window.open(img)} />
+                              ))}
+                           </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* HISTORIAL DE RESPUESTAS - Mostrar solo si hay historial y NO es auditor viendo un caso no resuelto */}
@@ -366,18 +423,24 @@ export const IncidencesReported: React.FC<Props> = ({
                                onChange={e => setTempResponse(e.target.value)}
                                placeholder="Escriba su observación o dictamen de calidad..."
                              />
-                             <div className="grid grid-cols-2 gap-4 mt-6">
+                             <div className="grid grid-cols-3 gap-3 mt-6">
                                 <button 
-                                  onClick={() => handleQuickResolutionSave(false)}
-                                  className="py-5 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
+                                  onClick={() => handleQuickResolutionSave('approve')}
+                                  className="py-4 bg-emerald-500 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
                                 >
-                                  Aprobar / Cerrar
+                                  Aprobar
                                 </button>
                                 <button 
-                                  onClick={() => handleQuickResolutionSave(true)}
-                                  className="py-5 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20"
+                                  onClick={() => handleQuickResolutionSave('observe')}
+                                  className="py-4 bg-rose-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20"
                                 >
-                                  Observar Caso
+                                  Observar
+                                </button>
+                                <button 
+                                  onClick={() => handleQuickResolutionSave('close')}
+                                  className="py-4 bg-slate-700 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-500/20"
+                                >
+                                  Cerrar Caso
                                 </button>
                              </div>
                           </div>
@@ -426,6 +489,23 @@ export const IncidencesReported: React.FC<Props> = ({
                              placeholder="Ingrese su nuevo descargo o rectificación..." 
                            />
                         </div>
+
+                        <div className="space-y-3">
+                           <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
+                           <div className="flex flex-wrap gap-4 mb-4">
+                             {evidenceImages.map((img, idx) => (
+                               <div key={idx} className="relative group">
+                                 <img src={img} alt="Sustento" className="w-20 h-20 object-cover rounded-xl border-2 border-slate-200" />
+                                 <button onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                               </div>
+                             ))}
+                             <label className="w-20 h-20 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all text-slate-300 hover:text-blue-500 hover:border-blue-500">
+                               <span className="text-xl font-bold">+</span>
+                               <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                             </label>
+                           </div>
+                        </div>
+
                         <button 
                           onClick={() => handleQuickResolutionSave()} 
                           className="w-full py-6 bg-slate-900 text-white rounded-3xl font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:scale-[1.02] active:scale-95 transition-all"

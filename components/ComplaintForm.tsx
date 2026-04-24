@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Complaint, ComplaintStatus, Priority, NoCallPatient } from '../types';
+import { Complaint, ComplaintStatus, Priority, NoCallPatient, DIMENSIONS } from '../types';
 import { analyzeComplaint } from '../services/geminiService';
 import { dbService } from '../services/apiService';
 import { getLocalDateInTimezone, getCurrentTimeInTimezone } from '../src/utils/timeUtils';
@@ -22,7 +22,8 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     specialty: '', 
     area: '', managerName: '',
     description: '', status: ComplaintStatus.PENDIENTE, satisfaction: 3,
-    date: getLocalDateInTimezone(timezone)
+    date: getLocalDateInTimezone(timezone),
+    dimension: DIMENSIONS[0]
   });
 
   // Asegurar que el área y especialidad tengan valores por defecto cuando carguen los props
@@ -58,8 +59,8 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.description || !formData.area || !formData.specialty) {
-      alert("Por favor complete Área y Especialidad");
+    if (!formData.description || !formData.area || !formData.specialty || !formData.dimension) {
+      alert("Por favor complete Área, Especialidad y Dimensión");
       return;
     }
     setLoading(true);
@@ -128,6 +129,13 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
           <div className="space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe de Área (Automático)</label>
             <input disabled className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-black text-sm text-amber-600" value={formData.managerName || 'SIN ASIGNAR'} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
+            <select required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.dimension} onChange={e => setFormData({...formData, dimension: e.target.value})}>
+              <option value="">-- Seleccione Dimensión --</option>
+              {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
           <div className="space-y-1 md:col-span-2 lg:col-span-2">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre del Paciente</label>

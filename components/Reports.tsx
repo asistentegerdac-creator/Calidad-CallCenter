@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Complaint, ComplaintStatus, User, NoCallPatient, Priority } from '../types';
+import { Complaint, ComplaintStatus, User, NoCallPatient, Priority, DIMENSIONS } from '../types';
 import { dbService } from '../services/apiService';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -20,6 +20,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [filterManager, setFilterManager] = useState('Todos');
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
+  const [filterDimension, setFilterDimension] = useState('Todas');
   const [dateFrom, setDateFrom] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   
@@ -32,6 +33,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [resolving, setResolving] = useState<Complaint | null>(null);
   const [tempResponse, setTempResponse] = useState('');
+  const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -39,6 +41,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
   useEffect(() => {
     if (resolving) {
+      setEvidenceImages(resolving.evidenceImages || []);
       // Si es auditor o está observado, empezamos con campo vacío para nueva respuesta/observación
       const shouldClear = currentUser?.role === 'auditor' || resolving.isObserved;
       setTempResponse(shouldClear ? '' : (resolving.managementResponse || ''));
@@ -47,6 +50,19 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
   const isNoCall = (phone: string, name: string) => {
     return noCallList.some(p => p.patientPhone === phone || (p.patientName && p.patientName.toLowerCase() === name.toLowerCase()));
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setEvidenceImages(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
   };
 
   const managers = useMemo(() => {
@@ -59,6 +75,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       [ComplaintStatus.PENDIENTE]: 0,
       [ComplaintStatus.PROCESO]: 1,
       [ComplaintStatus.RESUELTO]: 2,
+      [ComplaintStatus.CERRADO]: 3,
     };
 
     return [...complaints]
@@ -66,11 +83,12 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
         const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
+        const matchDimension = filterDimension === 'Todas' ? true : c.dimension === filterDimension;
         const matchDate = c.date >= dateFrom && c.date <= dateTo;
-        return matchManager && matchArea && matchStatus && matchDate;
+        return matchManager && matchArea && matchStatus && matchDimension && matchDate;
       })
-      .sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-  }, [complaints, filterManager, filterArea, filterStatus, dateFrom, dateTo]);
+      .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
+  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo]);
 
   const groupedByManager = useMemo(() => {
     const groups: Record<string, Complaint[]> = {};
@@ -82,9 +100,13 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     return groups;
   }, [filtered]);
 
-  const handleSave = (auditObservation?: boolean) => {
+  const handleSave = (auditAction?: 'observe' | 'close' | 'approve') => {
     const data = editing || resolving;
     if (data) {
+      if (data.status === ComplaintStatus.CERRADO && currentUser?.role !== 'admin') {
+        return alert("Este caso ya está cerrado.");
+      }
+
       const history = data.responseHistory || [];
       const newHistory = [...history];
       const userInput = tempResponse || '';
@@ -100,13 +122,15 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           type: 'auditor'
         });
 
-        const isMarkingObserved = auditObservation === true;
+        const isMarkingObserved = auditAction === 'observe';
+        const isClosing = auditAction === 'close';
         
         const updatedData: Complaint = {
           ...data,
-          status: isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO,
+          status: isClosing ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO),
           isObserved: isMarkingObserved,
           responseHistory: newHistory,
+          evidenceImages: evidenceImages, // Asegurar que se guarden si se agregaron
           resolvedBy: isMarkingObserved ? undefined : (data.resolvedBy || currentUser.name),
           managementResponse: isMarkingObserved ? '' : data.managementResponse 
         };
@@ -133,6 +157,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         managementResponse: userInput,
         responseHistory: newHistory,
         isObserved: false,
+        evidenceImages: evidenceImages,
         resolvedBy: currentUser?.name || 'Admin' 
       };
       
@@ -185,6 +210,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     worksheet.columns = [
       { header: 'FECHA', key: 'date', width: 15 },
       { header: 'ID', key: 'id', width: 15 },
+      { header: 'DIMENSIÓN', key: 'dimension', width: 25 },
       { header: 'PACIENTE', key: 'patientName', width: 30 },
       { header: 'ÁREA', key: 'area', width: 20 },
       { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
@@ -226,7 +252,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       const totalCount = items.length;
       // Fila de Jefe con TOTAL
       const managerRow = worksheet.addRow([`JEFATURA: ${manager} (TOTAL PENDIENTES: ${totalCount})`]);
-      worksheet.mergeCells(`A${managerRow.number}:G${managerRow.number}`);
+      worksheet.mergeCells(`A${managerRow.number}:H${managerRow.number}`);
       managerRow.getCell(1).fill = managerFill;
       managerRow.getCell(1).font = fontWhite;
       managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
@@ -235,6 +261,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         const row = worksheet.addRow({
           date: item.date,
           id: item.id,
+          dimension: item.dimension,
           patientName: item.patientName.toUpperCase(),
           area: item.area,
           specialty: item.specialty,
@@ -261,7 +288,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
         // FILA DE DESCRIPCIÓN COMBINADA (Para mejor lectura de textos largos)
         const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
-        worksheet.mergeCells(`A${descRow.number}:G${descRow.number}`);
+        worksheet.mergeCells(`A${descRow.number}:H${descRow.number}`);
         const descCell = descRow.getCell(1);
         descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
         descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -329,6 +356,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     worksheet.columns = [
       { header: 'FECHA INICIO', key: 'date', width: 15 },
       { header: 'ID', key: 'id', width: 15 },
+      { header: 'DIMENSIÓN', key: 'dimension', width: 25 },
       { header: 'PACIENTE', key: 'patientName', width: 30 },
       { header: 'ÁREA', key: 'area', width: 20 },
       { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
@@ -372,7 +400,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       const totalCount = items.length;
       // Fila de Jefe con TOTAL
       const managerRow = worksheet.addRow([`JEFATURA: ${manager} (TOTAL RESUELTOS: ${totalCount})`]);
-      worksheet.mergeCells(`A${managerRow.number}:J${managerRow.number}`);
+      worksheet.mergeCells(`A${managerRow.number}:K${managerRow.number}`);
       managerRow.getCell(1).fill = managerFill;
       managerRow.getCell(1).font = fontWhite;
       managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
@@ -383,6 +411,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         const row = worksheet.addRow({
           date: item.date,
           id: item.id,
+          dimension: item.dimension,
           patientName: item.patientName.toUpperCase(),
           area: item.area,
           specialty: item.specialty,
@@ -405,7 +434,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
         // FILA DE DESCRIPCIÓN COMBINADA
         const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
-        worksheet.mergeCells(`A${descRow.number}:J${descRow.number}`);
+        worksheet.mergeCells(`A${descRow.number}:K${descRow.number}`);
         const descCell = descRow.getCell(1);
         descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
         descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -427,7 +456,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         if (item.responseHistory && item.responseHistory.length > 0) {
           item.responseHistory.forEach((entry, eIdx) => {
             const entryRow = worksheet.addRow([`${entry.type === 'auditor' ? 'AUDITORÍA' : 'RESPUESTA JEFE'} (${entry.user} - ${entry.timestamp}): ${entry.text}`]);
-            worksheet.mergeCells(`A${entryRow.number}:J${entryRow.number}`);
+            worksheet.mergeCells(`A${entryRow.number}:K${entryRow.number}`);
             const entryCell = entryRow.getCell(1);
             
             const isAuditor = entry.type === 'auditor';
@@ -454,7 +483,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           const resTime = resolvedDateObj ? resolvedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
           
           const respRow = worksheet.addRow([`RESPUESTA JEFE (${resDate} ${resTime}): ${responseText}`]);
-          worksheet.mergeCells(`A${respRow.number}:J${respRow.number}`);
+          worksheet.mergeCells(`A${respRow.number}:K${respRow.number}`);
           const respCell = respRow.getCell(1);
           respCell.font = { ...fontStandard, bold: true, size: 9, color: { argb: 'FF1E40AF' } }; 
           respCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -538,6 +567,13 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             </select>
           </div>
           <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
+            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterDimension} onChange={e => setFilterDimension(e.target.value)}>
+              <option value="Todas">Todas</option>
+              {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Total</label>
              <div className="p-4 bg-indigo-900 text-white rounded-xl font-black text-center text-sm">{filtered.length}</div>
           </div>
@@ -556,6 +592,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                 <thead>
                   <tr className="text-[9px] font-black text-slate-400 uppercase border-b pb-4">
                     <th className="px-4 pb-4" style={{ width: '120px' }}>FECHA / ID</th>
+                    <th className="px-4 pb-4">DIMENSIÓN</th>
                     <th className="px-4 pb-4">PACIENTE</th>
                     <th className="px-4 pb-4">DESCRIPCIÓN</th>
                     <th className="px-4 pb-4" style={{ width: '120px' }}>ESTADO</th>
@@ -567,11 +604,14 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                       <tr 
                         key={c.id} 
                         onClick={() => setResolving({...c})} 
-                        className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                        className={`hover:bg-slate-50 transition-colors group cursor-pointer ${c.isObserved ? 'bg-rose-50/50' : ''}`}
                       >
                       <td className="px-4 py-6">
                         <p className="font-black text-slate-900 text-[11px] whitespace-nowrap">{c.date}</p>
                         <p className="text-[8px] text-slate-400 font-bold">{c.id}</p>
+                      </td>
+                      <td className="px-4 py-6">
+                        <p className="font-black text-slate-900 text-[11px]">{c.dimension || 'General'}</p>
                       </td>
                       <td className="px-4 py-6">
                         <p className="font-black text-slate-900 uppercase text-[11px] truncate max-w-[150px]">{c.patientName}</p>
@@ -581,12 +621,20 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                         <p className="text-[10px] text-slate-500 line-clamp-2 italic">"{c.description}"</p>
                       </td>
                       <td className="px-4 py-6">
-                        <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase inline-block whitespace-nowrap ${
-                          c.status === 'Resuelto' ? 'bg-emerald-100 text-emerald-700' : 
-                          c.status === 'En Proceso' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                        }`}>
-                          {c.status}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase inline-block whitespace-nowrap text-center ${
+                            c.status === ComplaintStatus.RESUELTO ? 'bg-emerald-100 text-emerald-700' : 
+                            c.status === ComplaintStatus.CERRADO ? 'bg-slate-900 text-white' :
+                            c.status === ComplaintStatus.PROCESO ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                          } ${c.isObserved ? 'border-2 border-rose-600 bg-rose-50 text-rose-700 animate-pulse' : ''}`}>
+                            {c.status}
+                          </span>
+                          {c.isObserved && (
+                            <span className="bg-rose-600 text-white text-[7px] font-black px-2 py-0.5 rounded text-center uppercase tracking-tighter">
+                              ⚠️ Observado
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-6 text-right">
                          {currentUser?.role === 'admin' && (
@@ -714,9 +762,31 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                <p className="text-[10px] font-black text-orange-500 tracking-[0.2em] mt-2 uppercase">{resolving.id} | {resolving.patientName}</p>
             </div>
             
-            <div className="bg-slate-50 p-6 rounded-3xl mb-4 border border-slate-100 shadow-inner max-h-32 overflow-y-auto">
+            <div className="bg-slate-50 p-6 rounded-3xl mb-4 border border-slate-100 shadow-inner max-h-40 overflow-y-auto">
+               <div className="mb-3">
+                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dimensión:</p>
+                 <p className="text-[11px] font-black text-slate-900">{resolving.dimension}</p>
+               </div>
                <p className="text-xs text-slate-600 font-bold italic leading-relaxed">"{resolving.description}"</p>
             </div>
+
+            {/* IMÁGENES DE SUSTENTO */}
+            {resolving.evidenceImages && resolving.evidenceImages.length > 0 && (
+              <div className="mb-6 space-y-2">
+                <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
+                <div className="flex flex-wrap gap-2">
+                  {resolving.evidenceImages.map((img, idx) => (
+                    <img 
+                      key={idx} 
+                      src={img} 
+                      alt="Evidencia" 
+                      className="w-16 h-16 object-cover rounded-xl border border-slate-200 cursor-zoom-in hover:scale-105 transition-all" 
+                      onClick={() => window.open(img)} 
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* HISTORIAL - Mostrar solo si hay historial y NO es auditor viendo caso no resuelto */}
             {((resolving.responseHistory && resolving.responseHistory.length > 0) || resolving.managementResponse) && 
@@ -758,9 +828,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                       onChange={e => setTempResponse(e.target.value)}
                       placeholder="Ingrese su observación aquí..."
                     />
-                    <div className="grid grid-cols-2 gap-3">
-                      <button onClick={() => handleSave(false)} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px]">Cerrar</button>
-                      <button onClick={() => handleSave(true)} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[10px]">Observar</button>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button onClick={() => handleSave('approve')} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[9px]">Aprobar</button>
+                      <button onClick={() => handleSave('observe')} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[9px]">Observar</button>
+                      <button onClick={() => handleSave('close')} className="py-4 bg-slate-700 text-white rounded-xl font-black uppercase text-[9px]">Cerrar Caso</button>
                     </div>
                   </div>
                 ) : (
@@ -805,6 +876,23 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                       placeholder="Ingrese un nuevo descargo..." 
                     />
                   </div>
+
+                  <div className="space-y-3">
+                     <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
+                     <div className="flex flex-wrap gap-3 mb-4">
+                       {evidenceImages.map((img, idx) => (
+                         <div key={idx} className="relative group">
+                           <img src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border-2 border-slate-200" />
+                           <button onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                         </div>
+                       ))}
+                       <label className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all text-slate-300 hover:text-blue-500 hover:border-blue-500">
+                         <span className="text-lg font-bold">+</span>
+                         <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                       </label>
+                     </div>
+                  </div>
+
                   <button 
                     onClick={() => handleSave()} 
                     className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:scale-[1.02] transition-all"

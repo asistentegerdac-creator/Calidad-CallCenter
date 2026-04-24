@@ -2,7 +2,8 @@
 export enum ComplaintStatus {
   PENDIENTE = 'Pendiente',
   PROCESO = 'En Proceso',
-  RESUELTO = 'Resuelto'
+  RESUELTO = 'Resuelto',
+  CERRADO = 'Cerrado'
 }
 
 export enum Priority {
@@ -40,6 +41,8 @@ export interface Complaint {
   registeredAt?: string;
   isObserved?: boolean;
   responseHistory?: ResponseHistoryEntry[];
+  dimension: string;
+  evidenceImages?: string[];
 }
 
 export interface AreaMapping {
@@ -73,3 +76,14 @@ export interface User {
 }
 
 export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'settings' | 'no-call';
+
+export const DIMENSIONS = [
+  'Fiabilidad o Confiabilidad',
+  'Capacidad de Respuesta',
+  'Seguridad o Aseguramiento',
+  'Empatía',
+  'Aspectos Tangibles',
+  'Buen trato',
+  'Privacidad',
+  'Comunicación / Información'
+];
