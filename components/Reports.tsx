@@ -184,7 +184,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
   const handleExportExcel = async (from: string, to: string) => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Reporte Pendientes y Proceso');
+    const worksheet = workbook.addWorksheet('Reporte de Incidencias');
 
     // Estilos base
     const headerFill: ExcelJS.Fill = {
@@ -193,10 +193,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       fgColor: { argb: 'FF1E1B4B' } // Indigo 950
     };
 
-    const managerFill: ExcelJS.Fill = {
+    const summaryFill: ExcelJS.Fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFF59E0B' } // Amber 500
+      fgColor: { argb: 'FFF1F5F9' } // Slate 100
     };
 
     const fontWhite: Partial<ExcelJS.Font> = {
@@ -206,43 +206,16 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       size: 11
     };
 
-    const fontBlackBold: Partial<ExcelJS.Font> = {
-      bold: true,
-      name: 'Plus Jakarta Sans',
-      size: 10
-    };
-
     const fontStandard: Partial<ExcelJS.Font> = {
       name: 'Plus Jakarta Sans',
       size: 10
     };
 
-    // Columnas
-    worksheet.columns = [
-      { header: 'FECHA', key: 'date', width: 15 },
-      { header: 'ID', key: 'id', width: 15 },
-      { header: 'DIMENSIÓN', key: 'dimension', width: 25 },
-      { header: 'PACIENTE', key: 'patientName', width: 30 },
-      { header: 'ÁREA', key: 'area', width: 20 },
-      { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
-      { header: 'ESTADO', key: 'status', width: 15 },
-      { header: 'DESCRIPCIÓN', key: 'description', width: 50 },
-    ];
+    // 1. Resumen de Jefaturas (To keep what user asked "dejalo como esta")
+    worksheet.addRow(['RESUMEN DE GESTIÓN POR JEFATURA']).font = { bold: true, size: 12 };
+    const summaryHeader = worksheet.addRow(['JEFATURA', 'CANTIDAD DE CASOS']);
+    summaryHeader.eachCell(c => { c.font = { bold: true }; c.fill = summaryFill; });
 
-    // Estilo de cabecera
-    worksheet.getRow(1).eachCell((cell) => {
-      cell.fill = headerFill;
-      cell.font = fontWhite;
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
-    });
-
-    // Filtrar y agrupar por rango de fecha solicitado (asegurando comparación limpia de fechas)
     const pendingItems = complaints.filter(c => {
       const cDate = c.date.trim().substring(0, 10);
       const fromDate = from.trim().substring(0, 10);
@@ -251,81 +224,86 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
              cDate >= fromDate && cDate <= toDate;
     });
 
-    const grouped: Record<string, Complaint[]> = {};
+    const grouped: Record<string, number> = {};
     pendingItems.forEach(c => {
       const mgr = c.managerName || 'SIN JEFE ASIGNADO';
-      if (!grouped[mgr]) grouped[mgr] = [];
-      grouped[mgr].push(c);
+      grouped[mgr] = (grouped[mgr] || 0) + 1;
     });
 
-    // Agregar datos agrupados
-    Object.entries(grouped).forEach(([manager, items]) => {
-      const totalCount = items.length;
-      // Fila de Jefe con TOTAL
-      const managerRow = worksheet.addRow([`JEFATURA: ${manager} (TOTAL PENDIENTES: ${totalCount})`]);
-      worksheet.mergeCells(`A${managerRow.number}:H${managerRow.number}`);
-      managerRow.getCell(1).fill = managerFill;
-      managerRow.getCell(1).font = fontWhite;
-      managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+    Object.entries(grouped).forEach(([mgr, count]) => {
+      worksheet.addRow([mgr, count]);
+    });
 
-      items.forEach(item => {
-        const row = worksheet.addRow({
-          date: item.date,
-          id: item.id,
-          dimension: item.dimension,
-          patientName: item.patientName.toUpperCase(),
-          area: item.area,
-          specialty: item.specialty,
-          status: item.status,
-          description: '' // Se deja vacío para usar la fila combinada abajo
-        });
+    worksheet.addRow([]);
+    worksheet.addRow([]);
 
-        row.eachCell((cell) => {
-          cell.font = fontStandard;
-          cell.border = {
-            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }
-          };
-          
-          // Columna de Estado (F)
-          if (cell.address.includes('F' + row.number)) { 
-            cell.font = fontBlackBold;
-            if (item.status === ComplaintStatus.PENDIENTE) {
-              cell.font = { ...fontBlackBold, color: { argb: 'FFEA580C' } }; // Orange 600
-            } else if (item.status === ComplaintStatus.PROCESO) {
-              cell.font = { ...fontBlackBold, color: { argb: 'FF2563EB' } }; // Blue 600
-            }
-          }
-        });
+    // 2. Tabla Principal de Datos (Columnas solicitadas)
+    worksheet.columns = [
+      { header: 'FECHA ATENCIÓN', key: 'date', width: 20 },
+      { header: 'PACIENTE', key: 'patientName', width: 35 },
+      { header: 'ÁREA', key: 'area', width: 25 },
+      { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
+      { header: 'MÉDICO', key: 'doctorName', width: 25 },
+      { header: 'ESTADO', key: 'status', width: 15 },
+      { header: 'JEFATURA', key: 'managerName', width: 25 },
+      { header: 'DIMENSIÓN', key: 'dimension', width: 30 },
+      { header: 'DESCRIPCIÓN', key: 'description', width: 60 },
+      { header: 'FECHA RESPUESTA', key: 'resolvedAt', width: 20 },
+      { header: 'RESPUESTA JEFATURA', key: 'mgmtRes', width: 60 },
+      { header: 'AUDITORIA', key: 'auditRes', width: 60 },
+      { header: 'RESPUESTA JEFATURA (OBSERVADO)', key: 'mgmtResObs', width: 60 },
+    ];
 
-        // FILA DE DESCRIPCIÓN COMBINADA (Para mejor lectura de textos largos)
-        const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
-        worksheet.mergeCells(`A${descRow.number}:H${descRow.number}`);
-        const descCell = descRow.getCell(1);
-        descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
-        descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
-        descCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFF8FAFC' } // Slate 50
-        };
-        descCell.border = {
-          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
-        };
-        
-        // Ajustar altura de fila según longitud del texto
-        const estimatedLines = Math.ceil(item.description.length / 120);
-        descRow.height = Math.max(25, estimatedLines * 15);
+    // Aplicar estilos a la cabecera de la tabla de datos
+    const headerRowNumber = worksheet.rowCount; // La fila donde empiezan los headers
+    const headerRow = worksheet.getRow(headerRowNumber);
+    headerRow.eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.font = fontWhite;
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    });
+
+    // Agregar datos
+    pendingItems.forEach(item => {
+      const managerResponses = (item.responseHistory || []).filter(h => h.type === 'manager');
+      const auditorResponses = (item.responseHistory || []).filter(h => h.type === 'auditor');
+
+      const row = worksheet.addRow({
+        date: item.date,
+        patientName: item.patientName.toUpperCase(),
+        area: item.area,
+        specialty: item.specialty,
+        doctorName: item.doctorName || 'N/A',
+        status: item.status,
+        managerName: item.managerName || 'SIN ASIGNAR',
+        dimension: item.dimension,
+        description: item.description,
+        resolvedAt: item.resolvedAt || (managerResponses.length > 0 ? managerResponses[managerResponses.length - 1].timestamp : 'N/A'),
+        mgmtRes: managerResponses.length > 0 ? managerResponses[0].text : (item.managementResponse || ''),
+        auditRes: auditorResponses.length > 0 ? auditorResponses.map(a => `[${a.timestamp}] ${a.text}`).join(' | ') : '',
+        mgmtResObs: managerResponses.length > 1 ? managerResponses[managerResponses.length - 1].text : (item.isObserved ? (item.managementResponse || '') : '')
       });
 
-      // Espacio entre grupos
-      worksheet.addRow([]);
+      row.eachCell((cell) => {
+        cell.font = fontStandard;
+        cell.alignment = { vertical: 'top', wrapText: true };
+      });
     });
 
-    // Descargar
+    // Filtrado automático en la cabecera
+    worksheet.autoFilter = {
+      from: { row: headerRowNumber, column: 1 },
+      to: { row: headerRowNumber, column: 13 }
+    };
+
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `Reporte_DAC_Pendientes_${from}_al_${to}.xlsx`);
+    saveAs(new Blob([buffer]), `Lista_Incidencias_Pendientes_${from}_al_${to}.xlsx`);
   };
 
   const handleExportExcelResolved = async (from: string, to: string) => {
@@ -336,13 +314,13 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     const headerFill: ExcelJS.Fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF1E1B4B' } // Indigo 950
+      fgColor: { argb: 'FF1E1B4B' } 
     };
 
-    const managerFill: ExcelJS.Fill = {
+    const summaryFill: ExcelJS.Fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF10B981' } // Emerald 500 para resueltos
+      fgColor: { argb: 'FFECFDF5' } // Emerald 50
     };
 
     const fontWhite: Partial<ExcelJS.Font> = {
@@ -352,37 +330,59 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       size: 11
     };
 
-    const fontBlackBold: Partial<ExcelJS.Font> = {
-      bold: true,
-      name: 'Plus Jakarta Sans',
-      size: 10
-    };
-
     const fontStandard: Partial<ExcelJS.Font> = {
       name: 'Plus Jakarta Sans',
       size: 10
     };
 
-    // Columnas
+    const resolvedItems = complaints.filter(c => {
+      const cDate = c.date.trim().substring(0, 10);
+      const fromDate = from.trim().substring(0, 10);
+      const toDate = to.trim().substring(0, 10);
+      return c.status === ComplaintStatus.RESUELTO && cDate >= fromDate && cDate <= toDate;
+    });
+
+    // 1. Resumen
+    worksheet.addRow(['RESUMEN DE GESTIÓN (RESUELTOS)']).font = { bold: true, size: 12 };
+    const summaryHeader = worksheet.addRow(['JEFATURA', 'CANTIDAD RESUELTOS']);
+    summaryHeader.eachCell(c => { c.font = { bold: true }; c.fill = summaryFill; });
+
+    const grouped: Record<string, number> = {};
+    resolvedItems.forEach(c => {
+      const mgr = c.managerName || 'SIN JEFE ASIGNADO';
+      grouped[mgr] = (grouped[mgr] || 0) + 1;
+    });
+
+    Object.entries(grouped).forEach(([mgr, count]) => {
+      worksheet.addRow([mgr, count]);
+    });
+
+    worksheet.addRow([]);
+    worksheet.addRow([]);
+
+    // 2. Columnas
     worksheet.columns = [
-      { header: 'FECHA INICIO', key: 'date', width: 15 },
-      { header: 'ID', key: 'id', width: 15 },
-      { header: 'DIMENSIÓN', key: 'dimension', width: 25 },
-      { header: 'PACIENTE', key: 'patientName', width: 30 },
-      { header: 'ÁREA', key: 'area', width: 20 },
+      { header: 'FECHA ATENCIÓN', key: 'date', width: 20 },
+      { header: 'PACIENTE', key: 'patientName', width: 35 },
+      { header: 'ÁREA', key: 'area', width: 25 },
       { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
+      { header: 'MÉDICO', key: 'doctorName', width: 25 },
       { header: 'ESTADO', key: 'status', width: 15 },
-      { header: 'FECHA RES.', key: 'resolvedDate', width: 15 },
-      { header: 'HORA RES.', key: 'resolvedTime', width: 15 },
-      { header: 'RESUELTO POR', key: 'resolvedBy', width: 25 },
-      { header: 'DESCRIPCIÓN', key: 'description', width: 50 },
+      { header: 'JEFATURA', key: 'managerName', width: 25 },
+      { header: 'DIMENSIÓN', key: 'dimension', width: 30 },
+      { header: 'DESCRIPCIÓN', key: 'description', width: 60 },
+      { header: 'FECHA RESPUESTA', key: 'resolvedAt', width: 20 },
+      { header: 'RESPUESTA JEFATURA', key: 'mgmtRes', width: 60 },
+      { header: 'AUDITORIA', key: 'auditRes', width: 60 },
+      { header: 'RESPUESTA JEFATURA (OBSERVADO)', key: 'mgmtResObs', width: 60 },
     ];
 
-    // Estilo de cabecera
-    worksheet.getRow(1).eachCell((cell) => {
+    const headerRowNumber = worksheet.rowCount;
+    const headerRow = worksheet.getRow(headerRowNumber);
+    headerRow.eachCell((cell) => {
       cell.fill = headerFill;
       cell.font = fontWhite;
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       cell.border = {
         top: { style: 'thin' },
         left: { style: 'thin' },
@@ -391,135 +391,39 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       };
     });
 
-    // Filtrar por RESUELTOS y rango de fecha solicitado (asegurando comparación limpia de fechas)
-    const resolvedItems = complaints.filter(c => {
-      const cDate = c.date.trim().substring(0, 10);
-      const fromDate = from.trim().substring(0, 10);
-      const toDate = to.trim().substring(0, 10);
-      return c.status === ComplaintStatus.RESUELTO && cDate >= fromDate && cDate <= toDate;
-    });
+    resolvedItems.forEach(item => {
+      const managerResponses = (item.responseHistory || []).filter(h => h.type === 'manager');
+      const auditorResponses = (item.responseHistory || []).filter(h => h.type === 'auditor');
 
-    const grouped: Record<string, Complaint[]> = {};
-    resolvedItems.forEach(c => {
-      const mgr = c.managerName || 'SIN JEFE ASIGNADO';
-      if (!grouped[mgr]) grouped[mgr] = [];
-      grouped[mgr].push(c);
-    });
-
-    // Agregar datos agrupados
-    Object.entries(grouped).forEach(([manager, items]) => {
-      const totalCount = items.length;
-      // Fila de Jefe con TOTAL
-      const managerRow = worksheet.addRow([`JEFATURA: ${manager} (TOTAL RESUELTOS: ${totalCount})`]);
-      worksheet.mergeCells(`A${managerRow.number}:K${managerRow.number}`);
-      managerRow.getCell(1).fill = managerFill;
-      managerRow.getCell(1).font = fontWhite;
-      managerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
-
-      items.forEach(item => {
-        const resolvedDateObj = item.resolvedAt ? new Date(item.resolvedAt) : null;
-        
-        const row = worksheet.addRow({
-          date: item.date,
-          id: item.id,
-          dimension: item.dimension,
-          patientName: item.patientName.toUpperCase(),
-          area: item.area,
-          specialty: item.specialty,
-          status: item.status,
-          resolvedDate: resolvedDateObj ? resolvedDateObj.toLocaleDateString() : 'N/A',
-          resolvedTime: resolvedDateObj ? resolvedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A',
-          resolvedBy: item.resolvedBy || 'N/A',
-          description: '' 
-        });
-
-        row.eachCell((cell) => {
-          cell.font = fontStandard;
-          cell.border = {
-            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }
-          };
-          if (cell.address.includes('F' + row.number)) { 
-            cell.font = { ...fontBlackBold, color: { argb: 'FF10B981' } }; // Emerald 600
-          }
-        });
-
-        // FILA DE DESCRIPCIÓN COMBINADA
-        const descRow = worksheet.addRow([`DESCRIPCIÓN: ${item.description}`]);
-        worksheet.mergeCells(`A${descRow.number}:K${descRow.number}`);
-        const descCell = descRow.getCell(1);
-        descCell.font = { ...fontStandard, italic: true, size: 9, color: { argb: 'FF475569' } };
-        descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
-        descCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFF8FAFC' } 
-        };
-        descCell.border = {
-          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
-        };
-        
-        const estimatedLines = Math.ceil(item.description.length / 150);
-        descRow.height = Math.max(25, estimatedLines * 15);
-
-        // FILA(S) DE RESPUESTA(S) / AUDITORÍA
-        if (item.responseHistory && item.responseHistory.length > 0) {
-          item.responseHistory.forEach((entry, eIdx) => {
-            const entryRow = worksheet.addRow([`${entry.type === 'auditor' ? 'AUDITORÍA' : 'RESPUESTA JEFE'} (${entry.user} - ${entry.timestamp}): ${entry.text}`]);
-            worksheet.mergeCells(`A${entryRow.number}:K${entryRow.number}`);
-            const entryCell = entryRow.getCell(1);
-            
-            const isAuditor = entry.type === 'auditor';
-            entryCell.font = { ...fontStandard, bold: true, size: 9, color: { argb: isAuditor ? 'FFBE123C' : 'FF1E40AF' } }; 
-            entryCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
-            entryCell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: isAuditor ? 'FFFFF1F2' : 'FFEFF6FF' } 
-            };
-            entryCell.border = {
-              bottom: { style: 'thin', color: { argb: isAuditor ? 'FFFECDD3' : 'FFBFDBFE' } },
-              left: { style: 'thin', color: { argb: isAuditor ? 'FFFECDD3' : 'FFBFDBFE' } },
-              right: { style: 'thin', color: { argb: isAuditor ? 'FFFECDD3' : 'FFBFDBFE' } }
-            };
-            
-            const eLines = Math.ceil(entry.text.length / 150);
-            entryRow.height = Math.max(25, eLines * 15);
-          });
-        } else {
-          // Fallback para datos antiguos sin historial
-          const responseText = item.managementResponse || 'SIN RESPUESTA REGISTRADA';
-          const resDate = resolvedDateObj ? resolvedDateObj.toLocaleDateString() : 'N/A';
-          const resTime = resolvedDateObj ? resolvedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
-          
-          const respRow = worksheet.addRow([`RESPUESTA JEFE (${resDate} ${resTime}): ${responseText}`]);
-          worksheet.mergeCells(`A${respRow.number}:K${respRow.number}`);
-          const respCell = respRow.getCell(1);
-          respCell.font = { ...fontStandard, bold: true, size: 9, color: { argb: 'FF1E40AF' } }; 
-          respCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: 1 };
-          respCell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFEFF6FF' } 
-          };
-          respCell.border = {
-            bottom: { style: 'thin', color: { argb: 'FFBFDBFE' } },
-            left: { style: 'thin', color: { argb: 'FFBFDBFE' } },
-            right: { style: 'thin', color: { argb: 'FFBFDBFE' } }
-          };
-          
-          const estimatedRespLines = Math.ceil(responseText.length / 150);
-          respRow.height = Math.max(25, estimatedRespLines * 15);
-        }
+      const row = worksheet.addRow({
+        date: item.date,
+        patientName: item.patientName.toUpperCase(),
+        area: item.area,
+        specialty: item.specialty,
+        doctorName: item.doctorName || 'N/A',
+        status: item.status,
+        managerName: item.managerName || 'SIN ASIGNAR',
+        dimension: item.dimension,
+        description: item.description,
+        resolvedAt: item.resolvedAt || (managerResponses.length > 0 ? managerResponses[managerResponses.length - 1].timestamp : 'N/A'),
+        mgmtRes: managerResponses.length > 0 ? managerResponses[0].text : (item.managementResponse || ''),
+        auditRes: auditorResponses.length > 0 ? auditorResponses.map(a => `[${a.timestamp}] ${a.text}`).join(' | ') : '',
+        mgmtResObs: managerResponses.length > 1 ? managerResponses[managerResponses.length - 1].text : (item.isObserved ? (item.managementResponse || '') : '')
       });
 
-      worksheet.addRow([]);
+      row.eachCell((cell) => {
+        cell.font = fontStandard;
+        cell.alignment = { vertical: 'top', wrapText: true };
+      });
     });
 
-    // Descargar
+    worksheet.autoFilter = {
+      from: { row: headerRowNumber, column: 1 },
+      to: { row: headerRowNumber, column: 13 }
+    };
+
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `Reporte_DAC_Resueltos_${from}_al_${to}.xlsx`);
+    saveAs(new Blob([buffer]), `Lista_Incidencias_Resueltas_${from}_al_${to}.xlsx`);
   };
 
   const handleDelete = (id: string) => {
