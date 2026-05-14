@@ -257,7 +257,10 @@ export const Settings: React.FC<Props> = ({
                 </select>
              </div>
              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Jefe Responsable</label>
-                <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newMapping.manager} onChange={e => setNewMapping({...newMapping, manager: e.target.value})} />
+                <select className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newMapping.manager} onChange={e => setNewMapping({...newMapping, manager: e.target.value})}>
+                   <option value="">-- Seleccione Jefe --</option>
+                   {users.map(u => <option key={u.id} value={u.name}>{u.name} ({u.username})</option>)}
+                </select>
              </div>
              <button onClick={handleSaveMapping} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">Vincular y Reasignar</button>
           </div>
