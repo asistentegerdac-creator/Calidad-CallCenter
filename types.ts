@@ -43,6 +43,10 @@ export interface Complaint {
   responseHistory?: ResponseHistoryEntry[];
   dimension: string;
   evidenceImages?: string[];
+  involvedPersonnel?: string;
+  actionTaken?: string;
+  correctiveMeasure?: string;
+  correctiveMeasureOther?: string;
 }
 
 export interface AreaMapping {

@@ -48,6 +48,10 @@ export const IncidencesReported: React.FC<Props> = ({
   const [tempStatus, setTempStatus] = useState<ComplaintStatus>(ComplaintStatus.PENDIENTE);
   const [tempResponse, setTempResponse] = useState('');
   const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
+  const [involvedPersonnel, setInvolvedPersonnel] = useState('');
+  const [actionTaken, setActionTaken] = useState('');
+  const [correctiveMeasure, setCorrectiveMeasure] = useState('');
+  const [correctiveMeasureOther, setCorrectiveMeasureOther] = useState('');
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -60,6 +64,10 @@ export const IncidencesReported: React.FC<Props> = ({
       const shouldClear = currentUser?.role === 'auditor' || selected.isObserved;
       setTempResponse(shouldClear ? '' : (selected.managementResponse || ''));
       setEvidenceImages([]);
+      setInvolvedPersonnel(selected.involvedPersonnel || '');
+      setActionTaken(selected.actionTaken || '');
+      setCorrectiveMeasure(selected.correctiveMeasure || '');
+      setCorrectiveMeasureOther(selected.correctiveMeasureOther || '');
     }
   }, [selected, currentUser]);
 
@@ -152,6 +160,24 @@ export const IncidencesReported: React.FC<Props> = ({
       // Si el usuario es manager/jefe (o admin)
       if (!tempResponse.trim()) return alert("Debe ingresar su descargo.");
 
+      if (tempStatus === ComplaintStatus.RESUELTO) {
+        if (!involvedPersonnel.trim()) {
+          return alert("El campo 'Personal Involucrado' es obligatorio para resolver la incidencia.");
+        }
+        if (!actionTaken.trim()) {
+          return alert("El campo 'Acción Tomada' es obligatorio para resolver la incidencia.");
+        }
+        if (!correctiveMeasure) {
+          return alert("Debe seleccionar una 'Medida Correctiva' para resolver la incidencia.");
+        }
+        if (correctiveMeasure === 'otra' && !correctiveMeasureOther.trim()) {
+          return alert("Debe especificar la otra medida correctiva.");
+        }
+        if (correctiveMeasure === 'Memorandum' && (!evidenceImages || evidenceImages.length === 0)) {
+          return alert("Si selecciona 'Memorandum' como medida correctiva, es obligatorio adjuntar al menos una imagen de evidencia o sustento.");
+        }
+      }
+
       newHistory.push({
         text: tempResponse,
         user: currentUser?.name || 'Administrador',
@@ -166,7 +192,11 @@ export const IncidencesReported: React.FC<Props> = ({
         responseHistory: newHistory,
         isObserved: false, // Al responder, deja de estar observado
         resolvedBy: currentUser?.name || 'Administrador',
-        evidenceImages: [...(selected.evidenceImages || []), ...evidenceImages]
+        evidenceImages: [...(selected.evidenceImages || []), ...evidenceImages],
+        involvedPersonnel: involvedPersonnel.trim(),
+        actionTaken: actionTaken.trim(),
+        correctiveMeasure: correctiveMeasure,
+        correctiveMeasureOther: correctiveMeasure === 'Otra' ? correctiveMeasureOther.trim() : '',
       };
       
       if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
@@ -177,6 +207,10 @@ export const IncidencesReported: React.FC<Props> = ({
       setSelected(null);
       setTempResponse('');
       setEvidenceImages([]);
+      setInvolvedPersonnel('');
+      setActionTaken('');
+      setCorrectiveMeasure('');
+      setCorrectiveMeasureOther('');
     }
   };
 
@@ -511,8 +545,65 @@ export const IncidencesReported: React.FC<Props> = ({
                              ))}
                            </div>
                         </div>
-                        <div className="space-y-2">
-                           <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Dictamen / Respuesta de Jefatura</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                            <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                                  Personal Involucrado <span className="text-rose-500">*</span>
+                               </label>
+                               <input 
+                                 className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                                 value={involvedPersonnel}
+                                 onChange={e => setInvolvedPersonnel(e.target.value)}
+                                 placeholder="Nombre de la persona involucrada..."
+                               />
+                            </div>
+                            
+                            <div className="space-y-2 mb-3">
+                               <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                                  Medida Correctiva <span className="text-rose-500">*</span>
+                               </label>
+                               <select 
+                                 className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                                 value={correctiveMeasure}
+                                 onChange={e => setCorrectiveMeasure(e.target.value)}
+                               >
+                                  <option value="">-- Seleccione Medida --</option>
+                                  <option value="Llamada de Atenciòn Verbal">Llamada de Atención Verbal</option>
+                                  <option value="Memorandum">Memorandum</option>
+                                  <option value="Suspenciòn">Suspensión</option>
+                                  <option value="otra">Otra</option>
+                               </select>
+                            </div>
+                         </div>
+
+                         {correctiveMeasure === 'otra' && (
+                            <div className="space-y-2 mb-3">
+                               <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                                  Especifique Medida Correctiva <span className="text-rose-500">*</span>
+                               </label>
+                               <input 
+                                 className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                                 value={correctiveMeasureOther}
+                                 onChange={e => setCorrectiveMeasureOther(e.target.value)}
+                                 placeholder="Describa la medida correctiva adoptada..."
+                               />
+                            </div>
+                         )}
+
+                         <div className="space-y-2 mb-3">
+                            <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                               Acción Tomada por Jefatura <span className="text-rose-500">*</span>
+                            </label>
+                            <input 
+                              className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                              value={actionTaken}
+                              onChange={e => setActionTaken(e.target.value)}
+                              placeholder="Ej: se hizo recomendación, se sancionó con memorandum, etc."
+                            />
+                         </div>
+
+                         <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Dictamen / Respuesta de Jefatura</label>
                            <textarea 
                              className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] p-6 text-sm font-bold min-h-[180px] outline-none transition-all shadow-inner" 
                              value={tempResponse} 

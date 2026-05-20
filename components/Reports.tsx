@@ -35,6 +35,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [resolving, setResolving] = useState<Complaint | null>(null);
   const [tempResponse, setTempResponse] = useState('');
   const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
+  const [involvedPersonnel, setInvolvedPersonnel] = useState('');
+  const [actionTaken, setActionTaken] = useState('');
+  const [correctiveMeasure, setCorrectiveMeasure] = useState('');
+  const [correctiveMeasureOther, setCorrectiveMeasureOther] = useState('');
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -48,6 +52,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       if (current) {
         const shouldClear = currentUser?.role === 'auditor' || current.isObserved;
         setTempResponse(shouldClear ? '' : (current.managementResponse || ''));
+        setInvolvedPersonnel(current.involvedPersonnel || '');
+        setActionTaken(current.actionTaken || '');
+        setCorrectiveMeasure(current.correctiveMeasure || '');
+        setCorrectiveMeasureOther(current.correctiveMeasureOther || '');
       }
     }
   }, [resolving, editing, currentUser]);
@@ -156,6 +164,24 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       // Si el usuario es manager/jefe (o admin)
       if (!userInput.trim()) return alert("Debe ingresar su descargo.");
 
+      if (resolving.status === ComplaintStatus.RESUELTO) {
+        if (!involvedPersonnel.trim()) {
+          return alert("El campo 'Personal Involucrado' es obligatorio para resolver la incidencia.");
+        }
+        if (!actionTaken.trim()) {
+          return alert("El campo 'Acción Tomada' es obligatorio para resolver la incidencia.");
+        }
+        if (!correctiveMeasure) {
+          return alert("Debe seleccionar una 'Medida Correctiva' para resolver la incidencia.");
+        }
+        if (correctiveMeasure === 'otra' && !correctiveMeasureOther.trim()) {
+          return alert("Debe especificar la otra medida correctiva.");
+        }
+        if (correctiveMeasure === 'Memorandum' && (!evidenceImages || evidenceImages.length === 0)) {
+          return alert("Si selecciona 'Memorandum' como medida correctiva, es obligatorio adjuntar al menos una imagen de evidencia o sustento.");
+        }
+      }
+
       newHistory.push({
         text: userInput,
         user: currentUser?.name || 'Admin',
@@ -169,7 +195,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         responseHistory: newHistory,
         isObserved: false,
         evidenceImages: [...(resolving.evidenceImages || []), ...evidenceImages], // Support cumulative images
-        resolvedBy: currentUser?.name || 'Admin' 
+        resolvedBy: currentUser?.name || 'Admin',
+        involvedPersonnel: involvedPersonnel.trim(),
+        actionTaken: actionTaken.trim(),
+        correctiveMeasure: correctiveMeasure,
+        correctiveMeasureOther: correctiveMeasure === 'otra' ? correctiveMeasureOther.trim() : '',
       };
       
       if (updatedData.status === ComplaintStatus.RESUELTO && !updatedData.resolvedAt) {
@@ -267,6 +297,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       { header: 'RESPUESTA JEFATURA', key: 'mgmtRes', width: 70 },
       { header: 'AUDITORIA', key: 'auditRes', width: 70 },
       { header: 'RESPUESTA JEFATURA (OBS)', key: 'mgmtResObs', width: 70 },
+      { header: 'PERSONAL INVOLUCRADO', key: 'involvedPersonnel', width: 30 },
+      { header: 'ACCIÓN TOMADA', key: 'actionTaken', width: 35 },
+      { header: 'MEDIDA CORRECTIVA', key: 'correctiveMeasure', width: 30 },
+      { header: 'DETALLE OTRA MEDIDA', key: 'correctiveMeasureOther', width: 35 },
     ];
 
     // Aplicar estilos a la cabecera de la tabla de datos
@@ -302,7 +336,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         resolvedAt: item.resolvedAt || (managerResponses.length > 0 ? managerResponses[managerResponses.length - 1].timestamp : 'N/A'),
         mgmtRes: mgmtRes,
         auditRes: auditRes,
-        mgmtResObs: mgmtResObs
+        mgmtResObs: mgmtResObs,
+        involvedPersonnel: item.involvedPersonnel || 'N/A',
+        actionTaken: item.actionTaken || 'N/A',
+        correctiveMeasure: item.correctiveMeasure || 'N/A',
+        correctiveMeasureOther: item.correctiveMeasureOther || ''
       });
 
       // Estilo de celdas de datos
@@ -332,7 +370,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     // Filtrado automático en la cabecera
     worksheet.autoFilter = {
       from: { row: headerRowNumber, column: 1 },
-      to: { row: headerRowNumber, column: 13 }
+      to: { row: headerRowNumber, column: 17 }
     };
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -423,6 +461,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       { header: 'RESPUESTA JEFATURA', key: 'mgmtRes', width: 70 },
       { header: 'AUDITORIA', key: 'auditRes', width: 70 },
       { header: 'RESPUESTA JEFATURA (OBS)', key: 'mgmtResObs', width: 70 },
+      { header: 'PERSONAL INVOLUCRADO', key: 'involvedPersonnel', width: 30 },
+      { header: 'ACCIÓN TOMADA', key: 'actionTaken', width: 35 },
+      { header: 'MEDIDA CORRECTIVA', key: 'correctiveMeasure', width: 30 },
+      { header: 'DETALLE OTRA MEDIDA', key: 'correctiveMeasureOther', width: 35 },
     ];
 
     const headerRowNumber = worksheet.rowCount;
@@ -456,7 +498,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         resolvedAt: item.resolvedAt || (managerResponses.length > 0 ? managerResponses[managerResponses.length - 1].timestamp : 'N/A'),
         mgmtRes: mgmtRes,
         auditRes: auditRes,
-        mgmtResObs: mgmtResObs
+        mgmtResObs: mgmtResObs,
+        involvedPersonnel: item.involvedPersonnel || 'N/A',
+        actionTaken: item.actionTaken || 'N/A',
+        correctiveMeasure: item.correctiveMeasure || 'N/A',
+        correctiveMeasureOther: item.correctiveMeasureOther || ''
       });
 
       row.eachCell((cell) => {
@@ -479,7 +525,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     worksheet.autoFilter = {
       from: { row: headerRowNumber, column: 1 },
-      to: { row: headerRowNumber, column: 13 }
+      to: { row: headerRowNumber, column: 17 }
     };
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -877,6 +923,63 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                   </div>
 
                   <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                             Personal Involucrado <span className="text-rose-500">*</span>
+                          </label>
+                          <input 
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                            value={involvedPersonnel}
+                            onChange={e => setInvolvedPersonnel(e.target.value)}
+                            placeholder="Nombre de la persona involucrada..."
+                          />
+                       </div>
+                       
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                             Medida Correctiva <span className="text-rose-500">*</span>
+                          </label>
+                          <select 
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                            value={correctiveMeasure}
+                            onChange={e => setCorrectiveMeasure(e.target.value)}
+                          >
+                             <option value="">-- Seleccione Medida --</option>
+                             <option value="Llamada de Atenciòn Verbal">Llamada de Atención Verbal</option>
+                             <option value="Memorandum">Memorandum</option>
+                             <option value="Suspenciòn">Suspensión</option>
+                             <option value="otra">Otra</option>
+                          </select>
+                       </div>
+                    </div>
+
+                    {correctiveMeasure === 'otra' && (
+                       <div className="space-y-2 mb-3">
+                          <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                             Especifique Medida Correctiva <span className="text-rose-500">*</span>
+                          </label>
+                          <input 
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                            value={correctiveMeasureOther}
+                            onChange={e => setCorrectiveMeasureOther(e.target.value)}
+                            placeholder="Describa la medida correctiva adoptada..."
+                          />
+                       </div>
+                    )}
+
+                    <div className="space-y-2 mb-3">
+                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">
+                          Acción Tomada por Jefatura <span className="text-rose-500">*</span>
+                       </label>
+                       <input 
+                         className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl p-4 text-sm font-bold outline-none transition-all"
+                         value={actionTaken}
+                         onChange={e => setActionTaken(e.target.value)}
+                         placeholder="Ej: se hizo recomendación, se sancionó con memorandum, etc."
+                       />
+                    </div>
+
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Resolución / Descargo Jefatura</label>
                     <textarea 
                       className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] text-sm font-bold h-32 outline-none transition-all shadow-inner" 

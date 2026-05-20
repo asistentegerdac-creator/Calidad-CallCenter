@@ -49,6 +49,10 @@ const syncSchema = async (targetPool) => {
     await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS response_history JSONB;`);
     await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS dimension VARCHAR(100);`);
     await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS evidence_images JSONB;`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS involved_personnel VARCHAR(255);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS action_taken TEXT;`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS corrective_measure VARCHAR(100);`);
+    await client.query(`ALTER TABLE medical_incidences ADD COLUMN IF NOT EXISTS corrective_measure_other TEXT;`);
 
     await client.query(`ALTER TABLE dac_no_call_list ADD COLUMN IF NOT EXISTS reason TEXT;`);
 
@@ -166,7 +170,11 @@ app.get('/api/complaints', async (req, res) => {
       dimension: row.dimension || 'General',
       evidenceImages: row.evidence_images,
       sentiment: row.sentiment_analysis,
-      suggestedResponse: row.suggested_response
+      suggestedResponse: row.suggested_response,
+      involvedPersonnel: row.involved_personnel,
+      actionTaken: row.action_taken,
+      correctiveMeasure: row.corrective_measure,
+      correctiveMeasureOther: row.corrective_measure_other
     })));
   } catch (e) { res.status(500).send(e.message); }
 });
@@ -176,11 +184,11 @@ app.get('/api/complaints', async (req, res) => {
   const c = req.body;
   try {
     await pool.query(`
-      INSERT INTO medical_incidences (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, manager_name, complaint_description, current_status, priority_level, satisfaction_score, management_solution, resolved_by_admin, sentiment_analysis, suggested_response, resolved_at, registered_at, is_observed, response_history, dimension, evidence_images)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+      INSERT INTO medical_incidences (audit_id, incidence_date, patient_name, patient_phone, doctor_name, specialty_name, area_name, manager_name, complaint_description, current_status, priority_level, satisfaction_score, management_solution, resolved_by_admin, sentiment_analysis, suggested_response, resolved_at, registered_at, is_observed, response_history, dimension, evidence_images, involved_personnel, action_taken, corrective_measure, corrective_measure_other)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
       ON CONFLICT (audit_id) DO UPDATE SET 
-        incidence_date=EXCLUDED.incidence_date, patient_name=EXCLUDED.patient_name, patient_phone=EXCLUDED.patient_phone, doctor_name=EXCLUDED.doctor_name, specialty_name=EXCLUDED.specialty_name, area_name=EXCLUDED.area_name, manager_name=EXCLUDED.manager_name, complaint_description=EXCLUDED.complaint_description, current_status=EXCLUDED.current_status, priority_level=EXCLUDED.priority_level, satisfaction_score=EXCLUDED.satisfaction_score, management_solution=EXCLUDED.management_solution, resolved_by_admin=EXCLUDED.resolved_by_admin, sentiment_analysis=EXCLUDED.sentiment_analysis, suggested_response=EXCLUDED.suggested_response, resolved_at=EXCLUDED.resolved_at, registered_at=EXCLUDED.registered_at, is_observed=EXCLUDED.is_observed, response_history=EXCLUDED.response_history, dimension=EXCLUDED.dimension, evidence_images=EXCLUDED.evidence_images
-    `, [c.id, c.date, c.patientName, c.patientPhone, c.doctorName, c.specialty, c.area, c.managerName, c.description, c.status, c.priority, c.satisfaction, c.managementResponse, c.resolvedBy, c.sentiment, c.suggestedResponse, c.resolvedAt, c.registeredAt, c.isObserved || false, JSON.stringify(c.responseHistory || []), c.dimension, JSON.stringify(c.evidenceImages || [])]);
+        incidence_date=EXCLUDED.incidence_date, patient_name=EXCLUDED.patient_name, patient_phone=EXCLUDED.patient_phone, doctor_name=EXCLUDED.doctor_name, specialty_name=EXCLUDED.specialty_name, area_name=EXCLUDED.area_name, manager_name=EXCLUDED.manager_name, complaint_description=EXCLUDED.complaint_description, current_status=EXCLUDED.current_status, priority_level=EXCLUDED.priority_level, satisfaction_score=EXCLUDED.satisfaction_score, management_solution=EXCLUDED.management_solution, resolved_by_admin=EXCLUDED.resolved_by_admin, sentiment_analysis=EXCLUDED.sentiment_analysis, suggested_response=EXCLUDED.suggested_response, resolved_at=EXCLUDED.resolved_at, registered_at=EXCLUDED.registered_at, is_observed=EXCLUDED.is_observed, response_history=EXCLUDED.response_history, dimension=EXCLUDED.dimension, evidence_images=EXCLUDED.evidence_images, involved_personnel=EXCLUDED.involved_personnel, action_taken=EXCLUDED.action_taken, corrective_measure=EXCLUDED.corrective_measure, corrective_measure_other=EXCLUDED.corrective_measure_other
+    `, [c.id, c.date, c.patientName, c.patientPhone, c.doctorName, c.specialty, c.area, c.managerName, c.description, c.status, c.priority, c.satisfaction, c.managementResponse, c.resolvedBy, c.resolvedAt, c.registeredAt, c.isObserved || false, JSON.stringify(c.responseHistory || []), c.dimension, JSON.stringify(c.evidenceImages || []), c.involvedPersonnel, c.actionTaken, c.correctiveMeasure, c.correctiveMeasureOther]);
     res.sendStatus(201);
   } catch (e) { res.status(500).send(e.message); }
 });
