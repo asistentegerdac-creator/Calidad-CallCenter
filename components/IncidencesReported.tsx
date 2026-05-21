@@ -603,7 +603,7 @@ export const IncidencesReported: React.FC<Props> = ({
                          </div>
 
                          <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Dictamen / Respuesta de Jefatura</label>
+                            <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Detalles de la acción tomada / Seguimiento de control</label>
                            <textarea 
                              className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] p-6 text-sm font-bold min-h-[180px] outline-none transition-all shadow-inner" 
                              value={tempResponse} 

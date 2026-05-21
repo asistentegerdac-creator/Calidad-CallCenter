@@ -26,7 +26,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportType, setExportType] = useState<'pending' | 'resolved'>('pending');
+  const [exportType, setExportType] = useState<'pending' | 'resolved' | 'all'>('pending');
   const [exportDateFrom, setExportDateFrom] = useState(dateFrom);
   const [exportDateTo, setExportDateTo] = useState(dateTo);
 
@@ -532,6 +532,166 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     saveAs(new Blob([buffer]), `Lista_Incidencias_Resueltas_${from}_al_${to}.xlsx`);
   };
 
+  const handleExportExcelAll = async (from: string, to: string) => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Reporte Todos');
+
+    // Estilos base
+    const headerFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1E1B4B' } 
+    };
+
+    const fontWhite: Partial<ExcelJS.Font> = {
+      color: { argb: 'FFFFFFFF' },
+      bold: true,
+      name: 'Plus Jakarta Sans',
+      size: 11
+    };
+
+    const fontStandard: Partial<ExcelJS.Font> = {
+      name: 'Plus Jakarta Sans',
+      size: 10
+    };
+
+    const borderStyle: any = {
+      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+    };
+
+    const allItems = complaints.filter(c => {
+      const cDate = c.date.trim().substring(0, 10);
+      const fromDate = from.trim().substring(0, 10);
+      const toDate = to.trim().substring(0, 10);
+      return cDate >= fromDate && cDate <= toDate;
+    });
+
+    // 1. Resumen
+    worksheet.addRow(['RESUMEN DE GESTIÓN (TODOS)']).font = { bold: true, size: 14, color: { argb: 'FF1E1B4B' } };
+    const summaryHeader = worksheet.addRow(['JEFATURA', 'CANTIDAD INCIDENCIAS']);
+    summaryHeader.eachCell(c => { 
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; 
+      c.fill = headerFill;
+      c.border = borderStyle;
+    });
+
+    const grouped: Record<string, number> = {};
+    allItems.forEach(c => {
+      const mgr = c.managerName || 'SIN JEFE ASIGNADO';
+      grouped[mgr] = (grouped[mgr] || 0) + 1;
+    });
+
+    Object.entries(grouped).forEach(([mgr, count]) => {
+      const row = worksheet.addRow([mgr, count]);
+      row.eachCell(c => {
+        c.border = borderStyle;
+        c.font = fontStandard;
+      });
+    });
+
+    worksheet.addRow([]);
+    worksheet.addRow([]);
+
+    // 2. Columnas
+    worksheet.columns = [
+      { header: 'FECHA ATENCIÓN', key: 'date', width: 22 },
+      { header: 'PACIENTE', key: 'patientName', width: 40 },
+      { header: 'ÁREA', key: 'area', width: 25 },
+      { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
+      { header: 'MÉDICO', key: 'doctorName', width: 30 },
+      { header: 'ESTADO', key: 'status', width: 18 },
+      { header: 'JEFATURA', key: 'managerName', width: 30 },
+      { header: 'DIMENSIÓN', key: 'dimension', width: 35 },
+      { header: 'DESCRIPCIÓN', key: 'description', width: 70 },
+      { header: 'FECHA RESPUESTA', key: 'resolvedAt', width: 22 },
+      { header: 'RESPUESTA JEFATURA', key: 'mgmtRes', width: 70 },
+      { header: 'AUDITORIA', key: 'auditRes', width: 70 },
+      { header: 'RESPUESTA JEFATURA (OBS)', key: 'mgmtResObs', width: 70 },
+      { header: 'PERSONAL INVOLUCRADO', key: 'involvedPersonnel', width: 30 },
+      { header: 'ACCIÓN TOMADA', key: 'actionTaken', width: 35 },
+      { header: 'MEDIDA CORRECTIVA', key: 'correctiveMeasure', width: 30 },
+      { header: 'DETALLE OTRA MEDIDA', key: 'correctiveMeasureOther', width: 35 },
+    ];
+
+    const headerRowNumber = worksheet.rowCount;
+    const headerRow = worksheet.getRow(headerRowNumber);
+    headerRow.height = 35;
+    headerRow.eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.font = fontWhite;
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = borderStyle;
+    });
+
+    allItems.forEach(item => {
+      const managerResponses = (item.responseHistory || []).filter(h => h.type === 'manager');
+      const auditorResponses = (item.responseHistory || []).filter(h => h.type === 'auditor');
+
+      const mgmtRes = managerResponses.length > 0 ? managerResponses[0].text : (item.managementResponse || '');
+      const auditRes = auditorResponses.length > 0 ? auditorResponses.map(a => `[${a.timestamp}] ${a.text}`).join('\n') : '';
+      const mgmtResObs = managerResponses.length > 1 ? managerResponses[managerResponses.length - 1].text : (item.isObserved ? (item.managementResponse || '') : '');
+
+      const row = worksheet.addRow({
+        date: item.date,
+        patientName: item.patientName.toUpperCase(),
+        area: item.area,
+        specialty: item.specialty,
+        doctorName: item.doctorName || 'N/A',
+        status: item.status.toUpperCase(),
+        managerName: item.managerName?.toUpperCase() || 'SIN ASIGNAR',
+        dimension: item.dimension,
+        description: item.description,
+        resolvedAt: item.resolvedAt || (managerResponses.length > 0 ? managerResponses[managerResponses.length - 1].timestamp : 'N/A'),
+        mgmtRes: mgmtRes,
+        auditRes: auditRes,
+        mgmtResObs: mgmtResObs,
+        involvedPersonnel: item.involvedPersonnel || 'N/A',
+        actionTaken: item.actionTaken || 'N/A',
+        correctiveMeasure: item.correctiveMeasure || 'N/A',
+        correctiveMeasureOther: item.correctiveMeasureOther || ''
+      });
+
+      row.eachCell((cell) => {
+        cell.font = fontStandard;
+        cell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
+        cell.border = borderStyle;
+        
+        // Colorear estado (Columna F)
+        if (cell.address.startsWith('F')) {
+           cell.font = { ...fontStandard, bold: true };
+           if (String(item.status) === String(ComplaintStatus.PENDIENTE)) {
+             cell.font.color = { argb: 'FFEA580C' };
+           } else if (String(item.status) === String(ComplaintStatus.PROCESO)) {
+             cell.font.color = { argb: 'FF2563EB' };
+           } else if (String(item.status) === String(ComplaintStatus.RESUELTO)) {
+             cell.font.color = { argb: 'FF10B981' };
+           } else {
+             cell.font.color = { argb: 'FF64748B' }; // Slate for Cerrado/others
+           }
+        }
+      });
+
+      const maxChars = Math.max(
+        item.description.length / 70, 
+        mgmtRes.length / 70, 
+        auditRes.length / 70,
+        mgmtResObs.length / 70
+      );
+      row.height = Math.max(25, Math.ceil(maxChars) * 15);
+    });
+
+    worksheet.autoFilter = {
+      from: { row: headerRowNumber, column: 1 },
+      to: { row: headerRowNumber, column: 17 }
+    };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Lista_Incidencias_Todas_${from}_al_${to}.xlsx`);
+  };
+
   const handleDelete = (id: string) => {
     onDelete(id);
     setEditing(null);
@@ -553,6 +713,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
                <button onClick={() => { setExportType('pending'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 EXCEL PENDIENTES</button>
                <button onClick={() => { setExportType('resolved'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">📊 EXCEL RESUELTOS</button>
+               <button onClick={() => { setExportType('all'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-violet-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-violet-700 hover:scale-105 transition-all">📊 TODOS</button>
             </div>
         </div>
 
@@ -705,7 +866,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             <div className="mb-8">
                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Exportar a Excel</h3>
                <p className="text-[10px] font-black text-indigo-500 tracking-[0.2em] mt-2 uppercase">
-                 {exportType === 'pending' ? 'Casos Pendientes y en Proceso' : 'Casos Resueltos'}
+                 {exportType === 'pending' ? 'Casos Pendientes y en Proceso' : exportType === 'resolved' ? 'Casos Resueltos' : 'Todos los Casos'}
                </p>
             </div>
             
@@ -733,8 +894,10 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                 onClick={() => {
                   if (exportType === 'pending') {
                     handleExportExcel(exportDateFrom, exportDateTo);
-                  } else {
+                  } else if (exportType === 'resolved') {
                     handleExportExcelResolved(exportDateFrom, exportDateTo);
+                  } else {
+                    handleExportExcelAll(exportDateFrom, exportDateTo);
                   }
                   setShowExportModal(false);
                 }} 
@@ -980,7 +1143,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                        />
                     </div>
 
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Resolución / Descargo Jefatura</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Detalles de la acción tomada / Seguimiento de control</label>
                     <textarea 
                       className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-[2rem] text-sm font-bold h-32 outline-none transition-all shadow-inner" 
                       value={tempResponse} 
