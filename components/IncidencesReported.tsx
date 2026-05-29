@@ -510,7 +510,7 @@ export const IncidencesReported: React.FC<Props> = ({
                                    value={tempDimension} 
                                    onChange={e => setTempDimension(e.target.value)}
                                  >
-                                   {DIMENSIONS.map(d => <option key={d} value={d} className="bg-slate-900">{d}</option>)}
+                                   {DIMENSIONS.map(d => <option key={d} value={d} className="bg-slate-900 text-white font-medium">{d}</option>)}
                                  </select>
                                </div>
                                <div className="space-y-1">
