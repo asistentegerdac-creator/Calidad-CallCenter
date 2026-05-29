@@ -42,6 +42,7 @@ export interface Complaint {
   isObserved?: boolean;
   responseHistory?: ResponseHistoryEntry[];
   dimension: string;
+  subDimension?: string;
   evidenceImages?: string[];
   involvedPersonnel?: string;
   actionTaken?: string;

@@ -39,6 +39,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [actionTaken, setActionTaken] = useState('');
   const [correctiveMeasure, setCorrectiveMeasure] = useState('');
   const [correctiveMeasureOther, setCorrectiveMeasureOther] = useState('');
+  const [tempDimension, setTempDimension] = useState('General');
+  const [tempSubDimension, setTempSubDimension] = useState('');
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -50,6 +52,8 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       // Si es auditor o está observado, empezamos con campo vacío para nueva respuesta/observación
       const current = resolving || editing;
       if (current) {
+        setTempDimension(current.dimension || 'General');
+        setTempSubDimension(current.subDimension || '');
         const shouldClear = currentUser?.role === 'auditor' || current.isObserved;
         setTempResponse(shouldClear ? '' : (current.managementResponse || ''));
         setInvolvedPersonnel(current.involvedPersonnel || '');
@@ -151,7 +155,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           responseHistory: newHistory,
           evidenceImages: [...(resolving.evidenceImages || []), ...evidenceImages], // Include new images
           resolvedBy: isMarkingObserved ? undefined : (resolving.resolvedBy || currentUser.name),
-          managementResponse: isMarkingObserved ? '' : resolving.managementResponse 
+          managementResponse: isMarkingObserved ? '' : resolving.managementResponse,
+          dimension: tempDimension,
+          subDimension: tempSubDimension
         };
 
         onUpdateFull(updatedData);
@@ -840,7 +846,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                         </div>
                       </td>
                       <td className="px-4 py-6 text-right">
-                         {currentUser?.role === 'admin' && (
+                         {(currentUser?.role === 'admin' || currentUser?.role === 'auditor') && (
                            <button 
                               onClick={(e) => { e.stopPropagation(); setEditing({...c}); }} 
                               className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 transition-all shadow-md"
@@ -941,6 +947,21 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                 </select>
               </div>
               <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Dimensión</label>
+                <select className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold outline-none transition-all" value={editing.dimension || 'General'} onChange={e => setEditing({...editing, dimension: e.target.value})}>
+                  {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sub Dimensión</label>
+                <input 
+                  className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" 
+                  value={editing.subDimension || ''} 
+                  onChange={e => setEditing({...editing, subDimension: e.target.value})} 
+                  placeholder="Especificar sub dimensión..."
+                />
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Descripción Original</label>
                 <textarea className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-[1.5rem] text-sm font-bold h-32 outline-none transition-all" value={editing.description} onChange={e => setEditing({...editing, description: e.target.value})} />
               </div>
@@ -981,9 +1002,17 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             </div>
             
             <div className="bg-slate-50 p-6 rounded-3xl mb-4 border border-slate-100 shadow-inner max-h-40 overflow-y-auto">
-               <div className="mb-3">
-                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dimensión:</p>
-                 <p className="text-[11px] font-black text-slate-900">{resolving.dimension}</p>
+               <div className="mb-3 flex gap-4">
+                 <div>
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dimensión:</p>
+                   <p className="text-[11px] font-black text-slate-900">{resolving.dimension}</p>
+                 </div>
+                 {resolving.subDimension && (
+                   <div>
+                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sub Dimensión:</p>
+                     <p className="text-[11px] font-black text-slate-900">{resolving.subDimension}</p>
+                   </div>
+                 )}
                </div>
                <p className="text-xs text-slate-600 font-bold italic leading-relaxed">"{resolving.description}"</p>
             </div>
@@ -1007,8 +1036,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             )}
 
             {/* HISTORIAL - Mostrar solo si hay historial y NO es auditor viendo caso no resuelto */}
-            {((resolving.responseHistory && resolving.responseHistory.length > 0) || resolving.managementResponse) && 
-             !(currentUser?.role === 'auditor' && resolving.status !== ComplaintStatus.RESUELTO) && (
+            {((resolving.responseHistory && resolving.responseHistory.length > 0) || resolving.managementResponse) && (
               <div className="space-y-3 mb-6">
                 <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Respuesta de Jefatura / Seguimiento</label>
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
@@ -1038,14 +1066,35 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             <div className="space-y-6">
               {currentUser?.role === 'auditor' ? (
                 resolving.status === ComplaintStatus.RESUELTO ? (
-                  <div className="space-y-4 bg-slate-900 p-6 rounded-[2rem]">
-                    <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Observación de Auditoría</label>
-                    <textarea 
-                      className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-xs font-bold h-24 outline-none"
-                      value={tempResponse}
-                      onChange={e => setTempResponse(e.target.value)}
-                      placeholder="Ingrese su observación aquí..."
-                    />
+                    <div className="space-y-4 bg-slate-900 p-6 rounded-[2rem]">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Dimensión</label>
+                          <select 
+                            className="w-full bg-slate-800 text-white border border-white/15 focus:border-rose-500 rounded-xl p-3 text-xs font-bold outline-none" 
+                            value={tempDimension} 
+                            onChange={e => setTempDimension(e.target.value)}
+                          >
+                            {DIMENSIONS.map(d => <option key={d} value={d} className="bg-slate-900">{d}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Sub Dimensión</label>
+                          <input 
+                            className="w-full bg-slate-800 text-white border border-white/15 focus:border-rose-500 rounded-xl p-3 text-xs font-bold outline-none transition-all placeholder:text-white/20" 
+                            value={tempSubDimension} 
+                            onChange={e => setTempSubDimension(e.target.value)} 
+                            placeholder="Especificar sub dimensión..."
+                          />
+                        </div>
+                      </div>
+                      <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest block">Observación de Auditoría</label>
+                      <textarea 
+                        className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-xs font-bold h-24 outline-none"
+                        value={tempResponse}
+                        onChange={e => setTempResponse(e.target.value)}
+                        placeholder="Ingrese su observación aquí..."
+                      />
                     <div className="grid grid-cols-3 gap-2">
                       <button onClick={() => handleResolutionSave('approve')} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[9px]">Aprobar</button>
                       <button onClick={() => handleResolutionSave('observe')} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[9px]">Observar</button>
