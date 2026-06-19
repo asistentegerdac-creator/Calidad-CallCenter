@@ -164,24 +164,30 @@ export const IncidencesReported: React.FC<Props> = ({
       }
 
       // Si el usuario es manager/jefe (o admin)
-      if (!tempResponse.trim()) return alert("Debe ingresar su descargo.");
+      const missingFields: string[] = [];
 
-      if (tempStatus === ComplaintStatus.RESUELTO) {
-        if (!involvedPersonnel.trim()) {
-          return alert("El campo 'Personal Involucrado' es obligatorio para resolver la incidencia.");
-        }
-        if (!actionTaken.trim()) {
-          return alert("El campo 'Acción Tomada' es obligatorio para resolver la incidencia.");
-        }
-        if (!correctiveMeasure) {
-          return alert("Debe seleccionar una 'Medida Correctiva' para resolver la incidencia.");
-        }
+      if (!tempResponse.trim()) {
+        missingFields.push("- Detalles de la acción tomada / Seguimiento de control");
+      }
+      if (!involvedPersonnel.trim()) {
+        missingFields.push("- Personal Involucrado");
+      }
+      if (!actionTaken.trim()) {
+        missingFields.push("- Acción Tomada por Jefatura");
+      }
+      if (!correctiveMeasure) {
+        missingFields.push("- Medida Correctiva");
+      } else {
         if (correctiveMeasure === 'otra' && !correctiveMeasureOther.trim()) {
-          return alert("Debe especificar la otra medida correctiva.");
+          missingFields.push("- Especificación de la otra medida correctiva");
         }
-        if (correctiveMeasure === 'Memorandum' && (!evidenceImages || evidenceImages.length === 0)) {
-          return alert("Si selecciona 'Memorandum' como medida correctiva, es obligatorio adjuntar al menos una imagen de evidencia o sustento.");
+        if (correctiveMeasure === 'Memorandum' && (!evidenceImages || !evidenceImages.length)) {
+          missingFields.push("- Sustento fotográfico (Imagen de evidencia obligatoria para la medida correctiva 'Memorandum')");
         }
+      }
+
+      if (missingFields.length > 0) {
+        return alert(`No se puede guardar el descargo porque faltan cargar datos obligatorios:\n\n${missingFields.join('\n')}`);
       }
 
       newHistory.push({
@@ -489,6 +495,54 @@ export const IncidencesReported: React.FC<Props> = ({
                                <p className="text-xs text-slate-600 whitespace-pre-wrap">{selected.managementResponse}</p>
                              </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ENLACE/DETALLES COMPLEMENTARIOS PARA AUDITOR */}
+                    {currentUser?.role === 'auditor' && (
+                      <div className="bg-slate-100 p-6 rounded-3xl border border-slate-200 mb-6 space-y-4">
+                        <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
+                          <span className="w-1.5 h-3.5 bg-slate-900 rounded-full"></span>
+                          Ficha Completa del Reclamo (Gestión de Jefatura)
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                          <div className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm">
+                            <span className="font-extrabold text-slate-400 block uppercase text-[9px] tracking-wider mb-1">Estado de la Gestión:</span>
+                            <span className={`inline-block px-3 py-1 rounded-lg text-[9px] font-black tracking-wider uppercase border ${
+                              selected?.status === ComplaintStatus.RESUELTO 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : selected?.status === ComplaintStatus.PROCESO 
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              {selected?.status}
+                            </span>
+                          </div>
+                          
+                          <div className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm">
+                            <span className="font-extrabold text-slate-400 block uppercase text-[9px] tracking-wider mb-1">Personal Involucrado:</span>
+                            <span className="font-bold text-slate-800">{selected?.involvedPersonnel || 'No especificado'}</span>
+                          </div>
+
+                          <div className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm">
+                            <span className="font-extrabold text-slate-400 block uppercase text-[9px] tracking-wider mb-1">Medida Correctiva:</span>
+                            <span className="font-bold text-slate-800">
+                              {selected?.correctiveMeasure === 'otra' ? selected?.correctiveMeasureOther : selected?.correctiveMeasure || 'No especificada'}
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm">
+                            <span className="font-extrabold text-slate-400 block uppercase text-[9px] tracking-wider mb-1">Acción Tomada:</span>
+                            <span className="font-bold text-slate-800">{selected?.actionTaken || 'No especificada'}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm">
+                          <span className="font-extrabold text-slate-400 block uppercase text-[9px] tracking-wider mb-1">Detalles de la Acción Tomada / Descargo:</span>
+                          <p className="font-medium text-slate-700 italic mt-1 leading-relaxed whitespace-pre-wrap bg-slate-50 p-3 rounded-xl border border-slate-100">
+                            "{selected?.managementResponse || 'Sin detalles de descargo de la jefatura'}"
+                          </p>
                         </div>
                       </div>
                     )}
