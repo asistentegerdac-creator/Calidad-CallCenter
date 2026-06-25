@@ -96,6 +96,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     return [...complaints]
       .filter(c => {
+        if (currentUser?.role === 'auditor' && c.isObserved) {
+          return false;
+        }
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
         const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
@@ -104,7 +107,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         return matchManager && matchArea && matchStatus && matchDimension && matchDate;
       })
       .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
-  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo]);
+  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo, currentUser]);
 
   const groupedByManager = useMemo(() => {
     const groups: Record<string, Complaint[]> = {};

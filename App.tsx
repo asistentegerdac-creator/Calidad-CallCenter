@@ -8,6 +8,7 @@ import { Settings } from './components/Settings';
 import { IncidencesReported } from './components/IncidencesReported';
 import { NoCallList } from './components/NoCallList';
 import { AnalyticsView } from './components/AnalyticsView';
+import { Tardanzas } from './components/Tardanzas';
 import { dbService } from './services/apiService';
 
 const App: React.FC = () => {
@@ -302,6 +303,7 @@ const App: React.FC = () => {
                 { id: 'new-incidence', label: 'Reportar', icon: '➕' },
                 { id: 'reports', label: 'Informes', icon: '📋' },
                 { id: 'analytics', label: 'Reportes', icon: '📊' },
+                { id: 'tardanzas', label: 'Tardanzas', icon: '🕒' },
                 { id: 'no-call', label: 'Lista Negra', icon: '📵' },
                 ...(currentUser?.role === 'admin' ? [{ id: 'settings', label: 'Ajustes', icon: '⚙️' }] : [])
               ].map((item) => (
@@ -327,6 +329,7 @@ const App: React.FC = () => {
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} />}
               {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} />}
               {activeView === 'analytics' && <AnalyticsView complaints={complaints} />}
+              {activeView === 'tardanzas' && <Tardanzas complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} timezone={timezone} />}
               {activeView === 'no-call' && <NoCallList noCallList={noCallList} isOnline={isOnline} onRefresh={autoSync} />}
               {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} timezone={timezone} setTimezone={setTimezone} />}
             </div>

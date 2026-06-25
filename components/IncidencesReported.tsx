@@ -89,6 +89,9 @@ export const IncidencesReported: React.FC<Props> = ({
 
     return [...complaints]
       .filter(c => {
+        if (currentUser?.role === 'auditor' && c.isObserved) {
+          return false;
+        }
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
         const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
@@ -99,7 +102,7 @@ export const IncidencesReported: React.FC<Props> = ({
         return matchManager && matchArea && matchStatus && matchDimension && matchDateFrom && matchDateTo;
       })
       .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
-  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo]);
+  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo, currentUser]);
 
   const managers = useMemo(() => Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean))), [complaints]);
 

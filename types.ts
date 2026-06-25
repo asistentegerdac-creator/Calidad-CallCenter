@@ -80,7 +80,7 @@ export interface User {
   permissions: string[];
 }
 
-export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'analytics' | 'settings' | 'no-call';
+export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'analytics' | 'settings' | 'no-call' | 'tardanzas';
 
 export const DIMENSIONS = [
   'Fiabilidad o Confiabilidad',

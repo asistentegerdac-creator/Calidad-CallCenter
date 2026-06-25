@@ -24,6 +24,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     description: '', status: ComplaintStatus.PENDIENTE, satisfaction: 3,
     date: getLocalDateInTimezone(timezone),
     dimension: DIMENSIONS[0],
+    subDimension: '',
     evidenceImages: [] as string[]
   });
 
@@ -97,6 +98,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
         description: '', 
         patientPhone: '', 
         doctorName: '', 
+        subDimension: '',
         satisfaction: 3, 
         date: getLocalDateInTimezone(timezone) 
       });
@@ -153,6 +155,15 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
               <option value="">-- Seleccione Dimensión --</option>
               {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Sub Dimensión</label>
+            <input 
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" 
+              value={formData.subDimension} 
+              onChange={e => setFormData({...formData, subDimension: e.target.value})} 
+              placeholder="Ej: Tardanza, Mal trato, etc."
+            />
           </div>
           <div className="space-y-1 md:col-span-2 lg:col-span-2">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre del Paciente</label>
