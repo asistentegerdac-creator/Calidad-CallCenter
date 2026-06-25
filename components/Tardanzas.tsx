@@ -46,6 +46,7 @@ interface Props {
   currentUser: User | null;
   onUpdateFull: (c: Complaint) => void;
   timezone: string;
+  areas?: string[];
 }
 
 const MONTH_NAMES = [
@@ -63,13 +64,20 @@ const MONTH_NAMES = [
   { value: '12', label: 'Diciembre' }
 ];
 
-export const Tardanzas: React.FC<Props> = ({ complaints, currentUser, onUpdateFull, timezone }) => {
+export const Tardanzas: React.FC<Props> = ({ 
+  complaints, 
+  currentUser, 
+  onUpdateFull, 
+  timezone,
+  areas = ["Urgencias", "Triaje", "Laboratorio", "Rayos X", "Consultas", "Farmacia"]
+}) => {
   const currentDate = new Date();
   const currentMonthStr = String(currentDate.getMonth() + 1).padStart(2, '0');
   const currentYearStr = String(currentDate.getFullYear());
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr);
   const [selectedYear, setSelectedYear] = useState<string>(currentYearStr);
+  const [selectedArea, setSelectedArea] = useState<string>('Consultas');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'gestion' | 'dashboard'>('gestion');
@@ -90,14 +98,19 @@ export const Tardanzas: React.FC<Props> = ({ complaints, currentUser, onUpdateFu
     return sub.includes('tarde') || sub.includes('tardanza') || sub.includes('demora') || sub.includes('retraso');
   };
 
-  // Extract complaints for the selected month/year that match tardiness criteria
+  // Extract complaints for the selected month/year that match tardiness criteria and selected area
   const tardinessComplaints = useMemo(() => {
     return complaints.filter(c => {
       if (!isTardinessComplaint(c)) return false;
       const [y, m] = c.date.split('-');
-      return y === selectedYear && m === selectedMonth;
+      if (y !== selectedYear || m !== selectedMonth) return false;
+      
+      if (selectedArea !== 'all') {
+        return (c.area || '').toLowerCase().trim() === selectedArea.toLowerCase().trim();
+      }
+      return true;
     });
-  }, [complaints, selectedMonth, selectedYear]);
+  }, [complaints, selectedMonth, selectedYear, selectedArea]);
 
   // Group complaints by Doctor
   const groupedDoctors = useMemo(() => {
@@ -353,7 +366,7 @@ export const Tardanzas: React.FC<Props> = ({ complaints, currentUser, onUpdateFu
 
     // Title Block
     worksheet.addRow(['REPORTE MENSUAL DE TARDANZAS DE PERSONAL MÉDICO']).font = titleFont;
-    worksheet.addRow([`Período: ${MONTH_NAMES.find(m => m.value === selectedMonth)?.label} ${selectedYear}`]).font = subtitleFont;
+    worksheet.addRow([`Período: ${MONTH_NAMES.find(m => m.value === selectedMonth)?.label} ${selectedYear} • Área: ${selectedArea === 'all' ? 'Todas' : selectedArea}`]).font = subtitleFont;
     worksheet.addRow([]);
 
     // Summary Section
@@ -506,6 +519,21 @@ export const Tardanzas: React.FC<Props> = ({ complaints, currentUser, onUpdateFu
             </select>
           </div>
 
+          {/* Area Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-2.5 rounded-xl">
+            <Layers className="w-3.5 h-3.5 text-slate-400" />
+            <select 
+              className="bg-transparent text-white font-extrabold text-[11px] uppercase tracking-wide outline-none cursor-pointer max-w-[160px]"
+              value={selectedArea}
+              onChange={e => { setSelectedArea(e.target.value); setSelectedDoctor(null); }}
+            >
+              <option value="all" className="bg-slate-900 text-white font-medium">Todas las áreas</option>
+              {areas.map(a => (
+                <option key={a} value={a} className="bg-slate-900 text-white font-medium">{a}</option>
+              ))}
+            </select>
+          </div>
+
           <button 
             onClick={handleExportExcel}
             className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[10px] uppercase tracking-wider px-5 py-3 rounded-xl shadow-lg transition-all"
@@ -546,13 +574,20 @@ export const Tardanzas: React.FC<Props> = ({ complaints, currentUser, onUpdateFu
           {/* DOCTOR LIST SIDE PANEL */}
           <div className="lg:col-span-5 space-y-4">
             <div className="bg-white rounded-3xl p-6 border shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b pb-4">
-                <h3 className="text-xs font-black uppercase text-slate-500 tracking-wider">
-                  Médicos con Tardanzas ({groupedDoctors.length})
-                </h3>
-                <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">
-                  Mes: {MONTH_NAMES.find(m => m.value === selectedMonth)?.label}
-                </span>
+              <div className="flex flex-col gap-2 border-b pb-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Médicos con Tardanzas ({groupedDoctors.length})
+                  </h3>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-0.5">
+                  <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg uppercase">
+                    Mes: {MONTH_NAMES.find(m => m.value === selectedMonth)?.label}
+                  </span>
+                  <span className="text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100 px-2 py-1 rounded-lg uppercase">
+                    Área: {selectedArea === 'all' ? 'Todas' : selectedArea}
+                  </span>
+                </div>
               </div>
 
               {/* SEARCH */}

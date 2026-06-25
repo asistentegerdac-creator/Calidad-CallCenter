@@ -329,7 +329,7 @@ const App: React.FC = () => {
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} />}
               {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} />}
               {activeView === 'analytics' && <AnalyticsView complaints={complaints} />}
-              {activeView === 'tardanzas' && <Tardanzas complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} timezone={timezone} />}
+              {activeView === 'tardanzas' && <Tardanzas complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} timezone={timezone} areas={areas} />}
               {activeView === 'no-call' && <NoCallList noCallList={noCallList} isOnline={isOnline} onRefresh={autoSync} />}
               {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} timezone={timezone} setTimezone={setTimezone} />}
             </div>
