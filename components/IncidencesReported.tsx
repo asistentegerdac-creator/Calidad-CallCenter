@@ -115,6 +115,7 @@ export const IncidencesReported: React.FC<Props> = ({
   const [selected, setSelected] = useState<Complaint | null>(null);
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [deriving, setDeriving] = useState<Complaint | null>(null);
+  const [isVistaTotal, setIsVistaTotal] = useState(false);
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,8 +188,9 @@ export const IncidencesReported: React.FC<Props> = ({
           if (c.managerName !== currentUser.name) return false;
         }
 
-        if (currentUser?.role === 'auditor' && c.isObserved) {
-          return false;
+        if (currentUser?.role === 'auditor' && !isVistaTotal) {
+          if (c.isObserved) return false;
+          if (c.status !== ComplaintStatus.RESUELTO) return false;
         }
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
@@ -346,7 +348,21 @@ export const IncidencesReported: React.FC<Props> = ({
               <span className="w-2 h-6 bg-orange-500 rounded-full"></span>
               Gestión Activa de Incidencias
             </h3>
-            {onRefresh && <button onClick={onRefresh} className="bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-black transition-all">Sincronizar Nodo</button>}
+            <div className="flex items-center gap-3">
+              {currentUser?.role === 'auditor' && (
+                <button 
+                  onClick={() => setIsVistaTotal(!isVistaTotal)}
+                  className={`flex items-center gap-2 px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg ${
+                    isVistaTotal 
+                     ? 'bg-amber-500 text-slate-950' 
+                     : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {isVistaTotal ? '👁️ Vista Total' : '🕶️ Vista Auditor'}
+                </button>
+              )}
+              {onRefresh && <button onClick={onRefresh} className="bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-black transition-all">Sincronizar Nodo</button>}
+            </div>
          </div>
 
          {/* Barra de Filtros */}

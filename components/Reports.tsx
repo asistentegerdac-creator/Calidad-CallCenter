@@ -132,6 +132,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [resolving, setResolving] = useState<Complaint | null>(null);
   const [deriving, setDeriving] = useState<Complaint | null>(null);
+  const [isVistaTotal, setIsVistaTotal] = useState(false);
   const [tempResponse, setTempResponse] = useState('');
   const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
   const [involvedPersonnel, setInvolvedPersonnel] = useState('');
@@ -200,8 +201,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           if (c.managerName !== currentUser.name) return false;
         }
 
-        if (currentUser?.role === 'auditor' && c.isObserved) {
-          return false;
+        if (currentUser?.role === 'auditor' && !isVistaTotal) {
+          if (c.isObserved) return false;
+          if (c.status !== ComplaintStatus.RESUELTO) return false;
         }
         const matchManager = filterManager === 'Todos' ? true : c.managerName === filterManager;
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
@@ -832,7 +834,20 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
               </h3>
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Visualice el historial y gestione resoluciones</p>
             </div>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap gap-4 items-center">
+               {currentUser?.role === 'auditor' && (
+                 <button 
+                   onClick={() => setIsVistaTotal(!isVistaTotal)}
+                   className={`flex items-center gap-2 px-6 py-5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-xl ${
+                     isVistaTotal 
+                      ? 'bg-amber-500 text-slate-950 ring-4 ring-amber-500/20' 
+                      : 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100'
+                   }`}
+                 >
+                   <span className="text-base">{isVistaTotal ? '👁️' : '🕶️'}</span>
+                   {isVistaTotal ? 'Vista Total (Admin)' : 'Vista Auditor'}
+                 </button>
+               )}
                <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
                <button onClick={() => { setExportType('pending'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 EXCEL PENDIENTES</button>
                <button onClick={() => { setExportType('resolved'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">📊 EXCEL RESUELTOS</button>
