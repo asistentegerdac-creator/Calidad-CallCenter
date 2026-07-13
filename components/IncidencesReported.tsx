@@ -15,13 +15,106 @@ interface Props {
   onRefresh?: () => void;
   timezone: string;
   onPreviewImage?: (img: string) => void;
+  users?: User[];
 }
 
+// Componente de Tarjeta Memoizado para mejor rendimiento
+const ComplaintCard = React.memo(({ 
+  c, 
+  currentUser, 
+  isNoCall, 
+  onSelect, 
+  onEdit, 
+  onDerive, 
+  onPreviewImage,
+  getStatusBadgeClass
+}: { 
+  c: Complaint, 
+  currentUser: User | null, 
+  isNoCall: boolean, 
+  onSelect: (c: Complaint) => void, 
+  onEdit: (c: Complaint) => void,
+  onDerive: (c: Complaint) => void,
+  onPreviewImage: (img: string) => void,
+  getStatusBadgeClass: (status: ComplaintStatus, isObserved?: boolean) => string
+}) => {
+  return (
+    <div className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[380px] cursor-pointer group hover:scale-[1.05] hover:z-30 ${isNoCall ? 'ring-2 ring-rose-500 ring-offset-4' : ''} ${c.isObserved ? 'border-rose-600 bg-rose-50/30 ring-2 ring-rose-600 ring-offset-2' : ''}`} 
+         style={{ borderTopColor: c.isObserved ? '#e11d48' : (c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981') }}
+         onClick={() => onSelect(c)}>
+      <div className="mb-4">
+        <div className="flex justify-between items-start">
+          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
+          <div className="flex gap-2">
+             {c.evidenceImages && c.evidenceImages.length > 0 && <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-blue-600 text-white flex items-center gap-1">🖼️ SUSTENTO</span>}
+             {c.isObserved && <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-rose-600 text-white animate-pulse">OBSERVADO</span>}
+             <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
+          </div>
+        </div>
+        <h4 className="text-xl font-black text-slate-900 leading-tight mt-2 group-hover:text-orange-600 transition-colors uppercase">{c.patientName}</h4>
+        <p className="text-[10px] font-bold text-slate-400 mt-1">{c.date}</p>
+        {isNoCall && <div className="mt-2 bg-rose-50 p-2 rounded-lg border border-rose-100 animate-pulse"><span className="text-rose-600 text-[9px] font-black uppercase">⚠️ RESTRICCIÓN: NO LLAMAR</span></div>}
+      </div>
+      <div className="space-y-3 mb-4">
+         <div className="flex flex-wrap gap-2">
+            <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 uppercase">{c.dimension}</span>
+            <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 uppercase">{c.area}</span>
+            {c.specialty && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 uppercase">{c.specialty}</span>}
+         </div>
+         <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
+            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-1">Personal Involucrado</p>
+            <p className="text-[12px] font-black text-slate-900 uppercase truncate">Dr. {c.doctorName || 'No especificado'}</p>
+         </div>
+      </div>
+      <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner group-hover:bg-white transition-all group-hover:overflow-y-auto">
+         {c.evidenceImages && c.evidenceImages.length > 0 && (
+           <div className="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">
+             {c.evidenceImages.slice(0, 3).map((img, idx) => (
+               <img 
+                 key={idx} 
+                 src={img} 
+                 className="w-10 h-10 object-cover rounded-lg border border-slate-200 cursor-zoom-in" 
+                 alt="Sustento" 
+                 onClick={(e) => { e.stopPropagation(); onPreviewImage?.(img); }}
+               />
+             ))}
+             {c.evidenceImages.length > 3 && (
+               <div className="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center text-[8px] font-black text-slate-500">+{c.evidenceImages.length - 3}</div>
+             )}
+           </div>
+         )}
+         <p className="text-[12px] group-hover:text-[16px] text-slate-600 font-medium leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all duration-300">"{c.description}"</p>
+      </div>
+      <div className="pt-4 border-t border-slate-100 flex justify-between items-center mt-auto">
+         <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(c.status, c.isObserved)}`}>{c.status}</span>
+         {(currentUser?.role === 'admin' || currentUser?.role === 'auditor') && (
+           <div className="flex gap-2">
+             <button 
+               onClick={(e) => { e.stopPropagation(); onDerive(c); }} 
+               className="p-2.5 bg-amber-500 text-slate-900 rounded-xl text-[9px] uppercase font-black hover:bg-amber-600 transition-all"
+               title="Derivar a otro jefe"
+             >
+               Derivar
+             </button>
+             <button 
+               onClick={(e) => { e.stopPropagation(); onEdit(c); }} 
+               className="p-2.5 bg-slate-900 text-white rounded-xl text-[9px] uppercase font-black hover:bg-orange-500 transition-all"
+             >
+               Editar Ficha
+             </button>
+           </div>
+         )}
+      </div>
+    </div>
+  );
+});
+
 export const IncidencesReported: React.FC<Props> = ({ 
-  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh, timezone, onPreviewImage 
+  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh, timezone, onPreviewImage, users = [] 
 }) => {
   const [selected, setSelected] = useState<Complaint | null>(null);
   const [editing, setEditing] = useState<Complaint | null>(null);
+  const [deriving, setDeriving] = useState<Complaint | null>(null);
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,6 +182,11 @@ export const IncidencesReported: React.FC<Props> = ({
 
     return [...complaints]
       .filter(c => {
+        // Restricción para agentes: solo ven sus propios reclamos
+        if (currentUser?.role === 'agent') {
+          if (c.managerName !== currentUser.name) return false;
+        }
+
         if (currentUser?.role === 'auditor' && c.isObserved) {
           return false;
         }
@@ -136,24 +234,29 @@ export const IncidencesReported: React.FC<Props> = ({
       
       // Si el usuario es auditor
       if (currentUser?.role === 'auditor') {
-        if (!tempResponse.trim()) return alert("Debe ingresar una observación.");
+        // Para observar o cerrar, el descargo es obligatorio (según lógica previa, pero el usuario pidió que para aprobar no sea obligatorio)
+        if (auditAction !== 'approve' && !tempResponse.trim()) {
+           return alert("Debe ingresar una observación.");
+        }
         
-        newHistory.push({
-          text: tempResponse,
-          user: currentUser.name,
-          timestamp: getCurrentTimeInTimezone(timezone),
-          type: 'auditor'
-        });
+        if (tempResponse.trim()) {
+          newHistory.push({
+            text: tempResponse,
+            user: currentUser.name,
+            timestamp: getCurrentTimeInTimezone(timezone),
+            type: 'auditor'
+          });
+        }
 
         const isMarkingObserved = auditAction === 'observe';
-        const isClosing = auditAction === 'close';
+        const isApproving = auditAction === 'approve';
         
         const updatedData: Complaint = {
           ...selected,
-          status: isClosing ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO),
+          status: (isApproving) ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.CERRADO),
           isObserved: isMarkingObserved,
           responseHistory: newHistory,
-          evidenceImages: [...(selected.evidenceImages || []), ...evidenceImages], // Include new images from state
+          evidenceImages: [...(selected.evidenceImages || []), ...evidenceImages],
           resolvedBy: isMarkingObserved ? undefined : (selected.resolvedBy || currentUser.name),
           managementResponse: isMarkingObserved ? '' : selected.managementResponse,
           dimension: tempDimension,
@@ -294,66 +397,63 @@ export const IncidencesReported: React.FC<Props> = ({
              <p className="text-slate-400 font-black uppercase text-[10px]">Sin incidencias que coincidan con los filtros</p>
           </div>
         ) : (
-          filtered.map(c => {
-            const noLlamar = isNoCall(c.patientPhone, c.patientName);
-            return (
-              <div key={c.id} className={`glass-card bg-white p-6 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[380px] cursor-pointer group hover:scale-[1.05] hover:z-30 ${noLlamar ? 'ring-2 ring-rose-500 ring-offset-4' : ''} ${c.isObserved ? 'border-rose-600 bg-rose-50/30 ring-2 ring-rose-600 ring-offset-2' : ''}`} 
-                   style={{ borderTopColor: c.isObserved ? '#e11d48' : (c.status === ComplaintStatus.PENDIENTE ? '#f97316' : c.status === ComplaintStatus.PROCESO ? '#2563eb' : '#10b981') }}
-                   onClick={() => setSelected(c)}>
-                <div className="mb-4">
-                  <div className="flex justify-between items-start">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
-                    <div className="flex gap-2">
-                       {c.evidenceImages && c.evidenceImages.length > 0 && <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-blue-600 text-white flex items-center gap-1">🖼️ SUSTENTO</span>}
-                       {c.isObserved && <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-rose-600 text-white animate-pulse">OBSERVADO</span>}
-                       <span className={`px-2 py-0.5 rounded-full text-[8px] font-black text-white ${c.priority === 'Crítica' ? 'bg-rose-600 shadow-lg shadow-rose-200' : 'bg-slate-800'}`}>{c.priority}</span>
-                    </div>
-                  </div>
-                  <h4 className="text-xl font-black text-slate-900 leading-tight mt-2 group-hover:text-orange-600 transition-colors uppercase">{c.patientName}</h4>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1">{c.date}</p>
-                  {noLlamar && <div className="mt-2 bg-rose-50 p-2 rounded-lg border border-rose-100 animate-pulse"><span className="text-rose-600 text-[9px] font-black uppercase">⚠️ RESTRICCIÓN: NO LLAMAR</span></div>}
-                </div>
-                <div className="space-y-3 mb-4">
-                   <div className="flex flex-wrap gap-2">
-                      <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 uppercase">{c.dimension}</span>
-                      <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 uppercase">{c.area}</span>
-                      {c.specialty && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 uppercase">{c.specialty}</span>}
-                   </div>
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-1">Personal Involucrado</p>
-                      <p className="text-[12px] font-black text-slate-900 uppercase truncate">Dr. {c.doctorName || 'No especificado'}</p>
-                   </div>
-                </div>
-                <div className="bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 flex-1 mb-5 overflow-hidden relative shadow-inner group-hover:bg-white transition-all group-hover:overflow-y-auto">
-                   {c.evidenceImages && c.evidenceImages.length > 0 && (
-                     <div className="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">
-                       {c.evidenceImages.slice(0, 3).map((img, idx) => (
-                         <img 
-                           key={idx} 
-                           src={img} 
-                           className="w-10 h-10 object-cover rounded-lg border border-slate-200 cursor-zoom-in" 
-                           alt="Sustento" 
-                           onClick={(e) => { e.stopPropagation(); onPreviewImage?.(img); }}
-                         />
-                       ))}
-                       {c.evidenceImages.length > 3 && (
-                         <div className="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center text-[8px] font-black text-slate-500">+{c.evidenceImages.length - 3}</div>
-                       )}
-                     </div>
-                   )}
-                   <p className="text-[12px] group-hover:text-[16px] text-slate-600 font-medium leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all duration-300">"{c.description}"</p>
-                </div>
-                <div className="pt-4 border-t border-slate-100 flex justify-between items-center mt-auto">
-                   <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(c.status, c.isObserved)}`}>{c.status}</span>
-                   {(currentUser?.role === 'admin' || currentUser?.role === 'auditor') && (
-                     <button onClick={(e) => { e.stopPropagation(); setEditing(c); }} className="p-2.5 bg-slate-900 text-white rounded-xl text-[9px] uppercase font-black hover:bg-orange-500 transition-all">Editar Ficha</button>
-                   )}
-                </div>
-              </div>
-            );
-          })
+          filtered.map(c => (
+            <ComplaintCard 
+              key={c.id}
+              c={c}
+              currentUser={currentUser}
+              isNoCall={isNoCall(c.patientPhone, c.patientName)}
+              onSelect={setSelected}
+              onEdit={setEditing}
+              onDerive={setDeriving}
+              onPreviewImage={onPreviewImage || (() => {})}
+              getStatusBadgeClass={getStatusBadgeClass}
+            />
+          ))
         )}
       </div>
+
+      {/* MODAL DE DERIVACIÓN */}
+      {deriving && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-lg flex items-center justify-center p-4 z-[600] animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md p-10 rounded-[2.5rem] shadow-2xl relative border border-white/20">
+            <button onClick={() => setDeriving(null)} className="absolute top-6 right-6 text-2xl font-light text-slate-300 hover:text-rose-500 transition-all">✕</button>
+            <div className="mb-6">
+              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Derivar Reclamo</h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">ID: {deriving.id}</p>
+            </div>
+            <div className="space-y-6">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Asignar a Jefatura</label>
+                <select 
+                  className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-amber-500 rounded-2xl text-sm font-bold outline-none transition-all"
+                  onChange={(e) => {
+                    const newManager = e.target.value;
+                    if (newManager) {
+                      const updated = { ...deriving, managerName: newManager };
+                      onUpdateFull(updated);
+                      setDeriving(null);
+                    }
+                  }}
+                  value={deriving.managerName || ''}
+                >
+                  <option value="">-- Seleccionar Jefe --</option>
+                  {users.filter(u => u.role === 'agent' || u.role === 'admin').map(u => (
+                    <option key={u.id} value={u.name}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[9px] text-slate-400 italic">Al derivar este reclamo, el jefe anterior ya no podrá visualizarlo en su panel de gestión.</p>
+              <button 
+                onClick={() => setDeriving(null)}
+                className="w-full py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(editing || selected) && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-lg flex items-center justify-center p-4 z-[500] animate-in fade-in duration-300">
@@ -586,7 +686,7 @@ export const IncidencesReported: React.FC<Props> = ({
                                onChange={e => setTempResponse(e.target.value)}
                                placeholder="Escriba su observación o dictamen de calidad..."
                              />
-                             <div className="grid grid-cols-3 gap-3 mt-6">
+                             <div className="grid grid-cols-2 gap-3 mt-6">
                                 <button 
                                   onClick={() => handleQuickResolutionSave('approve')}
                                   className="py-4 bg-emerald-500 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
@@ -598,12 +698,6 @@ export const IncidencesReported: React.FC<Props> = ({
                                   className="py-4 bg-rose-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-500/20"
                                 >
                                   Observar
-                                </button>
-                                <button 
-                                  onClick={() => handleQuickResolutionSave('close')}
-                                  className="py-4 bg-slate-700 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-500/20"
-                                >
-                                  Cerrar Caso
                                 </button>
                              </div>
                           </div>

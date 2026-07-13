@@ -325,9 +325,9 @@ const App: React.FC = () => {
           <main className="flex-1 w-full min-w-0 p-4 md:p-10 overflow-x-hidden">
             <div className="max-w-7xl mx-auto pt-12 md:pt-0">
               {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
-              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} />}
+              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} users={users} />}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} />}
-              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} />}
+              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} users={users} />}
               {activeView === 'analytics' && <AnalyticsView complaints={complaints} />}
               {activeView === 'tardanzas' && <Tardanzas complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} timezone={timezone} areas={areas} />}
               {activeView === 'no-call' && <NoCallList noCallList={noCallList} isOnline={isOnline} onRefresh={autoSync} />}

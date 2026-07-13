@@ -15,9 +15,107 @@ interface Props {
   currentUser: User | null;
   timezone: string;
   onPreviewImage?: (img: string) => void;
+  users?: User[];
 }
 
-export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser, timezone, onPreviewImage }) => {
+// Componente de Fila Memoizado para mejor rendimiento
+const ReportRow = React.memo(({ 
+  c, 
+  currentUser, 
+  isNoCall, 
+  onSelect, 
+  onEdit, 
+  onDerive, 
+  onPreviewImage 
+}: { 
+  c: Complaint, 
+  currentUser: User | null, 
+  isNoCall: boolean, 
+  onSelect: (c: Complaint) => void, 
+  onEdit: (c: Complaint) => void,
+  onDerive: (c: Complaint) => void,
+  onPreviewImage?: (img: string) => void 
+}) => {
+  return (
+    <tr 
+      onClick={() => onSelect({...c})} 
+      className={`hover:bg-slate-50 transition-colors group cursor-pointer ${c.isObserved ? 'bg-rose-50/50' : ''}`}
+    >
+      <td className="px-4 py-6">
+        <p className="font-black text-slate-900 text-[11px] whitespace-nowrap">{c.date}</p>
+        <p className="text-[8px] text-slate-400 font-bold">{c.id}</p>
+      </td>
+      <td className="px-4 py-6">
+        <p className="font-black text-slate-900 text-[11px]">{c.dimension || 'General'}</p>
+      </td>
+      <td className="px-4 py-6">
+        <p className="font-black text-slate-900 uppercase text-[11px] truncate max-w-[150px]">{c.patientName}</p>
+        {isNoCall && <span className="text-rose-600 text-[7px] font-black block mt-1">📵 RESTRINGIDO</span>}
+      </td>
+      <td className="px-4 py-6">
+        <div className="flex flex-col gap-2">
+          <p className="text-[10px] text-slate-500 line-clamp-2 italic">"{c.description}"</p>
+          {c.evidenceImages && c.evidenceImages.length > 0 && (
+            <div className="flex gap-1 overflow-x-auto">
+               {c.evidenceImages.slice(0, 3).map((img, idx) => (
+                 <img 
+                   key={idx} 
+                   src={img} 
+                   className="w-6 h-6 object-cover rounded border border-slate-200 cursor-zoom-in" 
+                   alt="Sustento" 
+                   onClick={(e) => { e.stopPropagation(); onPreviewImage?.(img); }}
+                 />
+               ))}
+               {c.evidenceImages.length > 3 && <span className="text-[7px] text-slate-400 font-black">+{c.evidenceImages.length - 3}</span>}
+            </div>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-6">
+        <div className="flex flex-col gap-1">
+          <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase inline-block whitespace-nowrap text-center ${
+            c.status === ComplaintStatus.RESUELTO ? 'bg-emerald-100 text-emerald-700' : 
+            c.status === ComplaintStatus.CERRADO ? 'bg-slate-900 text-white' :
+            c.status === ComplaintStatus.PROCESO ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+          } ${c.isObserved ? 'border-2 border-rose-600 bg-rose-50 text-rose-700 animate-pulse' : ''}`}>
+            {c.status}
+          </span>
+          {c.isObserved && (
+            <span className="bg-rose-600 text-white text-[7px] font-black px-2 py-0.5 rounded text-center uppercase tracking-tighter">
+              ⚠️ Observado
+            </span>
+          )}
+          {c.evidenceImages && c.evidenceImages.length > 0 && (
+            <span className="bg-blue-600 text-white text-[7px] font-black px-2 py-0.5 rounded text-center uppercase tracking-tighter">
+              🖼️ Con Sustento
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-6 text-right">
+         {(currentUser?.role === 'admin' || currentUser?.role === 'auditor') && (
+           <div className="flex gap-2 justify-end">
+              <button 
+                onClick={(e) => { e.stopPropagation(); onDerive(c); }} 
+                className="bg-amber-500 text-slate-900 px-3 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 transition-all shadow-md"
+                title="Derivar a otro jefe"
+              >
+                Derivar
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onEdit({...c}); }} 
+                className="bg-slate-900 text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 transition-all shadow-md"
+              >
+                Editar
+              </button>
+           </div>
+         )}
+      </td>
+    </tr>
+  );
+});
+
+export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser, timezone, onPreviewImage, users = [] }) => {
   const [filterManager, setFilterManager] = useState('Todos');
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
@@ -33,6 +131,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [noCallList, setNoCallList] = useState<NoCallPatient[]>([]);
   const [editing, setEditing] = useState<Complaint | null>(null);
   const [resolving, setResolving] = useState<Complaint | null>(null);
+  const [deriving, setDeriving] = useState<Complaint | null>(null);
   const [tempResponse, setTempResponse] = useState('');
   const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
   const [involvedPersonnel, setInvolvedPersonnel] = useState('');
@@ -96,6 +195,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     return [...complaints]
       .filter(c => {
+        // Restricción para agentes: solo ven sus propios reclamos
+        if (currentUser?.role === 'agent') {
+          if (c.managerName !== currentUser.name) return false;
+        }
+
         if (currentUser?.role === 'auditor' && c.isObserved) {
           return false;
         }
@@ -135,25 +239,29 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
       const history = resolving.responseHistory || [];
       const newHistory = [...history];
-      const userInput = tempResponse || '';
-
+      
       // Si el usuario es auditor
       if (currentUser?.role === 'auditor') {
-        if (!userInput.trim()) return alert("Debe ingresar una observación.");
+        // Para aprobar no es obligatorio el descargo
+        if (auditAction !== 'approve' && !tempResponse.trim()) {
+           return alert("Debe ingresar una observación.");
+        }
         
-        newHistory.push({
-          text: userInput,
-          user: currentUser.name,
-          timestamp: getCurrentTimeInTimezone(timezone),
-          type: 'auditor'
-        });
+        if (tempResponse.trim()) {
+          newHistory.push({
+            text: tempResponse,
+            user: currentUser.name,
+            timestamp: getCurrentTimeInTimezone(timezone),
+            type: 'auditor'
+          });
+        }
 
         const isMarkingObserved = auditAction === 'observe';
-        const isClosing = auditAction === 'close';
+        const isApproving = auditAction === 'approve';
         
         const updatedData: Complaint = {
           ...resolving,
-          status: isClosing ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.RESUELTO),
+          status: (isApproving) ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.CERRADO),
           isObserved: isMarkingObserved,
           responseHistory: newHistory,
           evidenceImages: [...(resolving.evidenceImages || []), ...evidenceImages], // Include new images
@@ -173,7 +281,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       // Si el usuario es manager/jefe (o admin)
       const missingFields: string[] = [];
 
-      if (!userInput.trim()) {
+      if (!tempResponse.trim()) {
         missingFields.push("- Detalles de la acción tomada / Seguimiento de control");
       }
       if (!involvedPersonnel.trim()) {
@@ -198,7 +306,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       }
 
       newHistory.push({
-        text: userInput,
+        text: tempResponse,
         user: currentUser?.name || 'Admin',
         timestamp: getCurrentTimeInTimezone(timezone),
         type: 'manager'
@@ -206,7 +314,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
       const updatedData: Complaint = { 
         ...resolving, 
-        managementResponse: userInput,
+        managementResponse: tempResponse,
         responseHistory: newHistory,
         isObserved: false,
         evidenceImages: [...(resolving.evidenceImages || []), ...evidenceImages], // Support cumulative images
@@ -798,73 +906,16 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {items.map(c => (
-                      <tr 
-                        key={c.id} 
-                        onClick={() => setResolving({...c})} 
-                        className={`hover:bg-slate-50 transition-colors group cursor-pointer ${c.isObserved ? 'bg-rose-50/50' : ''}`}
-                      >
-                      <td className="px-4 py-6">
-                        <p className="font-black text-slate-900 text-[11px] whitespace-nowrap">{c.date}</p>
-                        <p className="text-[8px] text-slate-400 font-bold">{c.id}</p>
-                      </td>
-                      <td className="px-4 py-6">
-                        <p className="font-black text-slate-900 text-[11px]">{c.dimension || 'General'}</p>
-                      </td>
-                      <td className="px-4 py-6">
-                        <p className="font-black text-slate-900 uppercase text-[11px] truncate max-w-[150px]">{c.patientName}</p>
-                        {isNoCall(c.patientPhone, c.patientName) && <span className="text-rose-600 text-[7px] font-black block mt-1">📵 RESTRINGIDO</span>}
-                      </td>
-                      <td className="px-4 py-6">
-                        <div className="flex flex-col gap-2">
-                          <p className="text-[10px] text-slate-500 line-clamp-2 italic">"{c.description}"</p>
-                          {c.evidenceImages && c.evidenceImages.length > 0 && (
-                            <div className="flex gap-1 overflow-x-auto">
-                               {c.evidenceImages.slice(0, 3).map((img, idx) => (
-                                 <img 
-                                   key={idx} 
-                                   src={img} 
-                                   className="w-6 h-6 object-cover rounded border border-slate-200 cursor-zoom-in" 
-                                   alt="Sustento" 
-                                   onClick={(e) => { e.stopPropagation(); onPreviewImage?.(img); }}
-                                 />
-                               ))}
-                               {c.evidenceImages.length > 3 && <span className="text-[7px] text-slate-400 font-black">+{c.evidenceImages.length - 3}</span>}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-6">
-                        <div className="flex flex-col gap-1">
-                          <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase inline-block whitespace-nowrap text-center ${
-                            c.status === ComplaintStatus.RESUELTO ? 'bg-emerald-100 text-emerald-700' : 
-                            c.status === ComplaintStatus.CERRADO ? 'bg-slate-900 text-white' :
-                            c.status === ComplaintStatus.PROCESO ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                          } ${c.isObserved ? 'border-2 border-rose-600 bg-rose-50 text-rose-700 animate-pulse' : ''}`}>
-                            {c.status}
-                          </span>
-                          {c.isObserved && (
-                            <span className="bg-rose-600 text-white text-[7px] font-black px-2 py-0.5 rounded text-center uppercase tracking-tighter">
-                              ⚠️ Observado
-                            </span>
-                          )}
-                          {c.evidenceImages && c.evidenceImages.length > 0 && (
-                            <span className="bg-blue-600 text-white text-[7px] font-black px-2 py-0.5 rounded text-center uppercase tracking-tighter">
-                              🖼️ Con Sustento
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-6 text-right">
-                         {(currentUser?.role === 'admin' || currentUser?.role === 'auditor') && (
-                           <button 
-                              onClick={(e) => { e.stopPropagation(); setEditing({...c}); }} 
-                              className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-amber-600 transition-all shadow-md"
-                            >
-                              Editar
-                            </button>
-                         )}
-                      </td>
-                    </tr>
+                    <ReportRow 
+                      key={c.id}
+                      c={c}
+                      currentUser={currentUser}
+                      isNoCall={isNoCall(c.patientPhone, c.patientName)}
+                      onSelect={setResolving}
+                      onEdit={setEditing}
+                      onDerive={setDeriving}
+                      onPreviewImage={onPreviewImage}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -873,7 +924,49 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         ))}
       </div>
 
-      {/* MODAL DE EXPORTACIÓN */}
+      {/* MODAL DE DERIVACIÓN */}
+      {deriving && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[700] no-print">
+          <div className="bg-white w-full max-w-md p-10 rounded-[3rem] shadow-2xl relative border border-white/20">
+            <button onClick={() => setDeriving(null)} className="absolute top-8 right-8 text-3xl text-slate-300 font-light hover:text-rose-500 transition-colors">✕</button>
+            <div className="mb-8 text-center">
+               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">🔄</div>
+               <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Derivar Reclamo</h3>
+               <p className="text-[10px] font-black text-slate-400 mt-2 uppercase">Seleccione el nuevo jefe responsable</p>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nuevo Responsable</label>
+                <select 
+                  className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-amber-500 rounded-2xl text-sm font-bold outline-none transition-all shadow-inner"
+                  value={deriving.managerName || ''}
+                  onChange={(e) => setDeriving({ ...deriving, managerName: e.target.value })}
+                >
+                  <option value="">Seleccionar Jefe...</option>
+                  {users.filter(u => u.role === 'agent' || u.role === 'admin').map(u => (
+                    <option key={u.id} value={u.name}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Jefe'})</option>
+                  ))}
+                </select>
+              </div>
+
+              <button 
+                onClick={() => {
+                  if (deriving.managerName) {
+                    onUpdateFull(deriving);
+                    setDeriving(null);
+                  } else {
+                    alert("Seleccione un jefe para derivar");
+                  }
+                }} 
+                className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-amber-600 transition-all transform hover:-translate-y-1"
+              >
+                CONFIRMAR DERIVACIÓN
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showExportModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[600] no-print">
           <div className="bg-white w-full max-w-md p-10 rounded-[3rem] shadow-2xl relative border border-white/20">
@@ -1152,10 +1245,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                         onChange={e => setTempResponse(e.target.value)}
                         placeholder="Ingrese su observación aquí..."
                       />
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => handleResolutionSave('approve')} className="py-4 bg-emerald-500 text-white rounded-xl font-black uppercase text-[9px]">Aprobar</button>
                       <button onClick={() => handleResolutionSave('observe')} className="py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-[9px]">Observar</button>
-                      <button onClick={() => handleResolutionSave('close')} className="py-4 bg-slate-700 text-white rounded-xl font-black uppercase text-[9px]">Cerrar Caso</button>
                     </div>
                   </div>
                 ) : (
