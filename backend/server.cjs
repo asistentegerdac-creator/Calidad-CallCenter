@@ -57,6 +57,31 @@ const syncSchema = async (targetPool) => {
 
     await client.query(`ALTER TABLE dac_no_call_list ADD COLUMN IF NOT EXISTS reason TEXT;`);
 
+    // Crear Tabla de dimensiones y subdimensiones master
+    await client.query(`CREATE TABLE IF NOT EXISTS dac_dimensions_catalog (
+      id SERIAL PRIMARY KEY,
+      dimension VARCHAR(255) NOT NULL,
+      sub_dimension VARCHAR(255) NOT NULL,
+      UNIQUE(dimension, sub_dimension)
+    );`);
+
+    const countRes = await client.query('SELECT COUNT(*) FROM dac_dimensions_catalog');
+    if (parseInt(countRes.rows[0].count) === 0) {
+      const defaults = [
+        ['Fiabilidad o Confiabilidad', 'General'],
+        ['Capacidad de Respuesta', 'General'],
+        ['Seguridad o Aseguramiento', 'General'],
+        ['Empatía', 'General'],
+        ['Aspectos Tangibles', 'General'],
+        ['Buen trato', 'General'],
+        ['Privacidad', 'General'],
+        ['Comunicación / Información', 'General']
+      ];
+      for (const [dim, sub] of defaults) {
+        await client.query('INSERT INTO dac_dimensions_catalog (dimension, sub_dimension) VALUES ($1, $2) ON CONFLICT (dimension, sub_dimension) DO NOTHING', [dim, sub]);
+      }
+    }
+
     await client.query('COMMIT');
     console.log("✅ [DAC] Postgres Estructura OK");
     return true;
@@ -322,6 +347,34 @@ app.delete('/api/catalog/specialties/:name', async (req, res) => {
   if (!pool) return res.sendStatus(503);
   try {
     await pool.query('DELETE FROM dac_specialties_master WHERE name = $1', [req.params.name]);
+    res.sendStatus(200);
+  } catch (e) { res.status(500).send(e.message); }
+});
+
+// Endpoints para Catálogo de Dimensiones y Subdimensiones
+app.get('/api/catalog/dimensions', async (req, res) => {
+  if (!pool) return res.json([]);
+  try {
+    const r = await pool.query('SELECT id, dimension, sub_dimension as "subDimension" FROM dac_dimensions_catalog ORDER BY dimension ASC, sub_dimension ASC');
+    res.json(r.rows);
+  } catch (e) { res.status(500).send(e.message); }
+});
+
+app.post('/api/catalog/dimensions', async (req, res) => {
+  if (!pool) return res.sendStatus(503);
+  const { dimension, subDimension } = req.body;
+  if (!dimension) return res.status(400).send("Dimension is required");
+  const sub = subDimension || 'General';
+  try {
+    await pool.query('INSERT INTO dac_dimensions_catalog (dimension, sub_dimension) VALUES ($1, $2) ON CONFLICT (dimension, sub_dimension) DO NOTHING', [dimension, sub]);
+    res.sendStatus(201);
+  } catch (e) { res.status(500).send(e.message); }
+});
+
+app.delete('/api/catalog/dimensions/:id', async (req, res) => {
+  if (!pool) return res.sendStatus(503);
+  try {
+    await pool.query('DELETE FROM dac_dimensions_catalog WHERE id = $1', [req.params.id]);
     res.sendStatus(200);
   } catch (e) { res.status(500).send(e.message); }
 });

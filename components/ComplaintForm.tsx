@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Complaint, ComplaintStatus, Priority, NoCallPatient, DIMENSIONS } from '../types';
+import { Complaint, ComplaintStatus, Priority, NoCallPatient, DimensionCatalogEntry } from '../types';
 import { analyzeComplaint } from '../services/geminiService';
 import { dbService } from '../services/apiService';
 import { getLocalDateInTimezone, getCurrentTimeInTimezone } from '../src/utils/timeUtils';
@@ -11,9 +11,11 @@ interface Props {
   onAdd: (c: Complaint) => void;
   noCallList: NoCallPatient[];
   timezone: string;
+  dimensions: DimensionCatalogEntry[];
+  onAddDimension: (dimension: string, subDimension: string) => void;
 }
 
-export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCallList, timezone }) => {
+export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCallList, timezone, dimensions, onAddDimension }) => {
   const [loading, setLoading] = useState(false);
   const [mappings, setMappings] = useState<any[]>([]);
   
@@ -23,10 +25,13 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     area: '', managerName: '',
     description: '', status: ComplaintStatus.PENDIENTE, satisfaction: 3,
     date: getLocalDateInTimezone(timezone),
-    dimension: DIMENSIONS[0],
+    dimension: '',
     subDimension: '',
     evidenceImages: [] as string[]
   });
+
+  const [customDimension, setCustomDimension] = useState('');
+  const [customSubDimension, setCustomSubDimension] = useState('');
 
   const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
 
@@ -53,6 +58,12 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
   }, [areas, specialties]);
 
   useEffect(() => {
+    if (!formData.dimension && dimensions.length > 0) {
+      setFormData(prev => ({ ...prev, dimension: dimensions[0].dimension }));
+    }
+  }, [dimensions]);
+
+  useEffect(() => {
     dbService.fetchAreasConfig().then(setMappings);
   }, []);
 
@@ -73,16 +84,56 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     );
   }, [formData.patientPhone, formData.patientName, noCallList]);
 
+  const uniqueDimensions = useMemo(() => {
+    const dSet = new Set(dimensions.map(d => d.dimension));
+    return Array.from(dSet);
+  }, [dimensions]);
+
+  const availableSubDimensions = useMemo(() => {
+    if (!formData.dimension || formData.dimension === 'ADD_NEW_DIM') return [];
+    const filtered = dimensions.filter(d => d.dimension === formData.dimension);
+    const sSet = new Set(filtered.map(d => d.subDimension));
+    return Array.from(sSet).filter(Boolean);
+  }, [dimensions, formData.dimension]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.description || !formData.area || !formData.specialty || !formData.dimension) {
+
+    let finalDim = formData.dimension;
+    let finalSub = formData.subDimension;
+
+    if (formData.dimension === 'ADD_NEW_DIM') {
+      if (!customDimension.trim()) {
+        alert("Por favor ingrese la nueva dimensión.");
+        return;
+      }
+      finalDim = customDimension.trim();
+    }
+
+    if (formData.subDimension === 'ADD_NEW_SUB_DIM') {
+      if (!customSubDimension.trim()) {
+        alert("Por favor ingrese la nueva subdimensión.");
+        return;
+      }
+      finalSub = customSubDimension.trim();
+    }
+
+    if (!formData.description || !formData.area || !formData.specialty || !finalDim) {
       alert("Por favor complete Área, Especialidad y Dimensión");
       return;
     }
+
+    // Agregar dinámicamente si es un elemento nuevo
+    if (formData.dimension === 'ADD_NEW_DIM' || formData.subDimension === 'ADD_NEW_SUB_DIM') {
+      await onAddDimension(finalDim, finalSub || 'General');
+    }
+
     setLoading(true);
     const analysis = await analyzeComplaint(formData.description);
     onAdd({
       ...formData,
+      dimension: finalDim,
+      subDimension: finalSub || 'General',
       id: `INC-${Date.now().toString().slice(-6)}`,
       priority: analysis?.priority as Priority || Priority.MEDIA,
       sentiment: analysis?.sentiment,
@@ -92,17 +143,20 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       evidenceImages: evidenceImages
     });
     setLoading(false);
-      setFormData({ 
-        ...formData, 
-        patientName: '', 
-        description: '', 
-        patientPhone: '', 
-        doctorName: '', 
-        subDimension: '',
-        satisfaction: 3, 
-        date: getLocalDateInTimezone(timezone) 
-      });
-      setEvidenceImages([]);
+    setFormData({ 
+      ...formData, 
+      patientName: '', 
+      description: '', 
+      patientPhone: '', 
+      doctorName: '', 
+      dimension: dimensions[0]?.dimension || '',
+      subDimension: '',
+      satisfaction: 3, 
+      date: getLocalDateInTimezone(timezone) 
+    });
+    setCustomDimension('');
+    setCustomSubDimension('');
+    setEvidenceImages([]);
   };
 
   return (
@@ -151,19 +205,47 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
           </div>
           <div className="space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
-            <select required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.dimension} onChange={e => setFormData({...formData, dimension: e.target.value})}>
+            <select 
+              required 
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" 
+              value={formData.dimension} 
+              onChange={e => setFormData({...formData, dimension: e.target.value, subDimension: ''})}
+            >
               <option value="">-- Seleccione Dimensión --</option>
-              {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
+              {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
+              <option value="ADD_NEW_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
             </select>
+            {formData.dimension === 'ADD_NEW_DIM' && (
+              <input 
+                required
+                className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none placeholder-teal-600"
+                placeholder="Nueva Dimensión..."
+                value={customDimension}
+                onChange={e => setCustomDimension(e.target.value)}
+              />
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Sub Dimensión</label>
-            <input 
+            <select 
+              required
               className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" 
               value={formData.subDimension} 
-              onChange={e => setFormData({...formData, subDimension: e.target.value})} 
-              placeholder="Ej: Tardanza, Mal trato, etc."
-            />
+              onChange={e => setFormData({...formData, subDimension: e.target.value})}
+            >
+              <option value="">-- Seleccione Subdimensión --</option>
+              {availableSubDimensions.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="ADD_NEW_SUB_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
+            </select>
+            {formData.subDimension === 'ADD_NEW_SUB_DIM' && (
+              <input 
+                required
+                className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none placeholder-teal-600"
+                placeholder="Nueva Subdimensión..."
+                value={customSubDimension}
+                onChange={e => setCustomSubDimension(e.target.value)}
+              />
+            )}
           </div>
           <div className="space-y-1 md:col-span-2 lg:col-span-2">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre del Paciente</label>

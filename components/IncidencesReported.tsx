@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Complaint, ComplaintStatus, User, NoCallPatient, Priority, DIMENSIONS } from '../types';
+import { Complaint, ComplaintStatus, User, NoCallPatient, Priority, DimensionCatalogEntry } from '../types';
 import { dbService } from '../services/apiService';
 import { getCurrentTimeInTimezone } from '../src/utils/timeUtils';
 
@@ -16,6 +16,8 @@ interface Props {
   timezone: string;
   onPreviewImage?: (img: string) => void;
   users?: User[];
+  dimensions: DimensionCatalogEntry[];
+  onAddDimension: (dimension: string, subDimension: string) => void;
 }
 
 // Componente de Tarjeta Memoizado para mejor rendimiento
@@ -110,7 +112,7 @@ const ComplaintCard = React.memo(({
 });
 
 export const IncidencesReported: React.FC<Props> = ({ 
-  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh, timezone, onPreviewImage, users = [] 
+  complaints, currentUser, onUpdateFull, onDelete, areas, specialties, onRefresh, timezone, onPreviewImage, users = [], dimensions = [], onAddDimension 
 }) => {
   const [selected, setSelected] = useState<Complaint | null>(null);
   const [editing, setEditing] = useState<Complaint | null>(null);
@@ -148,6 +150,28 @@ export const IncidencesReported: React.FC<Props> = ({
   const [correctiveMeasureOther, setCorrectiveMeasureOther] = useState('');
   const [tempDimension, setTempDimension] = useState('General');
   const [tempSubDimension, setTempSubDimension] = useState('');
+
+  const [customDimension, setCustomDimension] = useState('');
+  const [customSubDimension, setCustomSubDimension] = useState('');
+
+  const uniqueDimensions = useMemo(() => {
+    const dSet = new Set(dimensions.map(d => d.dimension));
+    return Array.from(dSet);
+  }, [dimensions]);
+
+  const availableSubDimensionsEditing = useMemo(() => {
+    if (!editing || !editing.dimension || editing.dimension === 'ADD_NEW_DIM') return [];
+    const filtered = dimensions.filter(d => d.dimension === editing.dimension);
+    const sSet = new Set(filtered.map(d => d.subDimension));
+    return Array.from(sSet).filter(Boolean);
+  }, [dimensions, editing?.dimension]);
+
+  const availableSubDimensionsResolving = useMemo(() => {
+    if (!tempDimension || tempDimension === 'ADD_NEW_DIM') return [];
+    const filtered = dimensions.filter(d => d.dimension === tempDimension);
+    const sSet = new Set(filtered.map(d => d.subDimension));
+    return Array.from(sSet).filter(Boolean);
+  }, [dimensions, tempDimension]);
 
   useEffect(() => {
     dbService.fetchNoCallList().then(list => { if (list) setNoCallList(list); });
@@ -217,15 +241,46 @@ export const IncidencesReported: React.FC<Props> = ({
     }
   };
 
-  const handleFullEditSave = () => {
+  const handleFullEditSave = async () => {
     if (editing) {
-      onUpdateFull(editing);
+      let finalDim = editing.dimension;
+      let finalSub = editing.subDimension;
+
+      if (editing.dimension === 'ADD_NEW_DIM') {
+        if (!customDimension.trim()) {
+          alert("Por favor ingrese la nueva dimensión.");
+          return;
+        }
+        finalDim = customDimension.trim();
+      }
+
+      if (editing.subDimension === 'ADD_NEW_SUB_DIM') {
+        if (!customSubDimension.trim()) {
+          alert("Por favor ingrese la nueva subdimensión.");
+          return;
+        }
+        finalSub = customSubDimension.trim();
+      }
+
+      if (editing.dimension === 'ADD_NEW_DIM' || editing.subDimension === 'ADD_NEW_SUB_DIM') {
+        await onAddDimension(finalDim, finalSub || 'General');
+      }
+
+      const updated = {
+        ...editing,
+        dimension: finalDim,
+        subDimension: finalSub || 'General'
+      };
+
+      onUpdateFull(updated);
       setEditing(null);
       setSelected(null);
+      setCustomDimension('');
+      setCustomSubDimension('');
     }
   };
 
-  const handleQuickResolutionSave = (auditAction?: 'observe' | 'close' | 'approve') => {
+  const handleQuickResolutionSave = async (auditAction?: 'observe' | 'close' | 'approve') => {
     if (selected) {
       if (selected.status === ComplaintStatus.CERRADO && currentUser?.role !== 'admin') {
         return alert("Este caso ya está cerrado y no se puede modificar.");
@@ -253,6 +308,27 @@ export const IncidencesReported: React.FC<Props> = ({
         const isMarkingObserved = auditAction === 'observe';
         const isApproving = auditAction === 'approve';
         
+        let finalDim = tempDimension;
+        let finalSub = tempSubDimension;
+
+        if (tempDimension === 'ADD_NEW_DIM') {
+          if (!customDimension.trim()) {
+            return alert("Por favor ingrese la nueva dimensión.");
+          }
+          finalDim = customDimension.trim();
+        }
+
+        if (tempSubDimension === 'ADD_NEW_SUB_DIM') {
+          if (!customSubDimension.trim()) {
+            return alert("Por favor ingrese la nueva subdimensión.");
+          }
+          finalSub = customSubDimension.trim();
+        }
+
+        if (tempDimension === 'ADD_NEW_DIM' || tempSubDimension === 'ADD_NEW_SUB_DIM') {
+          await onAddDimension(finalDim, finalSub || 'General');
+        }
+
         const updatedData: Complaint = {
           ...selected,
           status: (isApproving) ? ComplaintStatus.CERRADO : (isMarkingObserved ? ComplaintStatus.PENDIENTE : ComplaintStatus.CERRADO),
@@ -261,12 +337,14 @@ export const IncidencesReported: React.FC<Props> = ({
           evidenceImages: [...(selected.evidenceImages || []), ...evidenceImages],
           resolvedBy: isMarkingObserved ? undefined : (selected.resolvedBy || currentUser.name),
           managementResponse: isMarkingObserved ? '' : selected.managementResponse,
-          dimension: tempDimension,
-          subDimension: tempSubDimension
+          dimension: finalDim,
+          subDimension: finalSub || 'General'
         };
 
         onUpdateFull(updatedData);
         setSelected(null);
+        setCustomDimension('');
+        setCustomSubDimension('');
         setTempResponse('');
         return;
       }
@@ -401,7 +479,7 @@ export const IncidencesReported: React.FC<Props> = ({
                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
                <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold outline-none" value={filterDimension} onChange={e => setFilterDimension(e.target.value)}>
                   <option value="Todas">Todas</option>
-                  {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                  {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
                </select>
             </div>
          </div>
@@ -517,18 +595,45 @@ export const IncidencesReported: React.FC<Props> = ({
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Dimensión</label>
-                      <select className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold outline-none" value={editing.dimension} onChange={e => setEditing({...editing, dimension: e.target.value})}>
-                        {DIMENSIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                      <select 
+                        className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold outline-none" 
+                        value={editing.dimension || ''} 
+                        onChange={e => setEditing({...editing, dimension: e.target.value, subDimension: ''})}
+                      >
+                        <option value="">-- Seleccione Dimensión --</option>
+                        {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
+                        <option value="ADD_NEW_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
                       </select>
+                      {editing.dimension === 'ADD_NEW_DIM' && (
+                        <input 
+                          required
+                          className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none"
+                          placeholder="Escriba nueva dimensión..."
+                          value={customDimension}
+                          onChange={e => setCustomDimension(e.target.value)}
+                        />
+                      )}
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Sub Dimensión</label>
-                      <input 
-                        className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold transition-all outline-none" 
+                      <select 
+                        className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-orange-500 rounded-2xl text-sm font-bold outline-none" 
                         value={editing.subDimension || ''} 
-                        onChange={e => setEditing({...editing, subDimension: e.target.value})} 
-                        placeholder="Especificar sub dimensión..."
-                      />
+                        onChange={e => setEditing({...editing, subDimension: e.target.value})}
+                      >
+                        <option value="">-- Seleccione Subdimensión --</option>
+                        {availableSubDimensionsEditing.map(s => <option key={s} value={s}>{s}</option>)}
+                        <option value="ADD_NEW_SUB_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
+                      </select>
+                      {editing.subDimension === 'ADD_NEW_SUB_DIM' && (
+                        <input 
+                          required
+                          className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none"
+                          placeholder="Escriba nueva subdimensión..."
+                          value={customSubDimension}
+                          onChange={e => setCustomSubDimension(e.target.value)}
+                        />
+                      )}
                     </div>
                     <div className="space-y-1 md:col-span-1">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Nivel de Prioridad</label>
@@ -683,17 +788,40 @@ export const IncidencesReported: React.FC<Props> = ({
                                    value={tempDimension} 
                                    onChange={e => setTempDimension(e.target.value)}
                                  >
-                                   {DIMENSIONS.map(d => <option key={d} value={d} className="bg-slate-900 text-white font-medium">{d}</option>)}
+                                   <option value="">-- Seleccione Dimensión --</option>
+                                   {uniqueDimensions.map(d => <option key={d} value={d} className="bg-slate-900 text-white font-medium">{d}</option>)}
+                                   <option value="ADD_NEW_DIM" className="text-teal-400 font-bold">+ Agregar nueva...</option>
                                  </select>
+                                 {tempDimension === 'ADD_NEW_DIM' && (
+                                   <input 
+                                     required
+                                     className="w-full bg-slate-800 text-white border border-white/15 focus:border-rose-500 rounded-xl p-3 text-xs font-bold mt-1 outline-none"
+                                     placeholder="Nueva Dimensión..."
+                                     value={customDimension}
+                                     onChange={e => setCustomDimension(e.target.value)}
+                                   />
+                                 )}
                                </div>
                                <div className="space-y-1">
                                  <label className="text-[10px] font-black uppercase text-white/50 ml-2 tracking-widest">Sub Dimensión</label>
-                                 <input 
-                                   className="w-full bg-slate-800 text-white border border-white/15 focus:border-rose-500 rounded-xl p-3 text-xs font-bold outline-none transition-all placeholder:text-white/20" 
+                                 <select 
+                                   className="w-full bg-slate-800 text-white border border-white/15 focus:border-rose-500 rounded-xl p-3 text-xs font-bold outline-none" 
                                    value={tempSubDimension} 
-                                   onChange={e => setTempSubDimension(e.target.value)} 
-                                   placeholder="Especificar sub dimensión..."
-                                 />
+                                   onChange={e => setTempSubDimension(e.target.value)}
+                                 >
+                                   <option value="">-- Seleccione Subdimensión --</option>
+                                   {availableSubDimensionsResolving.map(s => <option key={s} value={s} className="bg-slate-900 text-white font-medium">{s}</option>)}
+                                   <option value="ADD_NEW_SUB_DIM" className="text-teal-400 font-bold">+ Agregar nueva...</option>
+                                 </select>
+                                 {tempSubDimension === 'ADD_NEW_SUB_DIM' && (
+                                   <input 
+                                     required
+                                     className="w-full bg-slate-800 text-white border border-white/15 focus:border-rose-500 rounded-xl p-3 text-xs font-bold mt-1 outline-none"
+                                     placeholder="Nueva Subdimensión..."
+                                     value={customSubDimension}
+                                     onChange={e => setCustomSubDimension(e.target.value)}
+                                   />
+                                 )}
                                </div>
                              </div>
                              <textarea 

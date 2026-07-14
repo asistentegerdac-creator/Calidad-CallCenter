@@ -203,5 +203,30 @@ export const dbService = {
       const r = await fetch(`${API_BASE}/nocall/${id}`, { method: 'DELETE' });
       return r.ok;
     } catch { return false; }
+  },
+
+  async fetchDimensions(): Promise<{ id: number; dimension: string; subDimension: string }[]> {
+    try {
+      const r = await fetch(`${API_BASE}/catalog/dimensions`);
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
+  },
+
+  async saveDimension(dimension: string, subDimension: string): Promise<boolean> {
+    try {
+      const r = await fetch(`${API_BASE}/catalog/dimensions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dimension, subDimension })
+      });
+      return r.ok;
+    } catch { return false; }
+  },
+
+  async deleteDimension(id: number): Promise<boolean> {
+    try {
+      const r = await fetch(`${API_BASE}/catalog/dimensions/${id}`, { method: 'DELETE' });
+      return r.ok;
+    } catch { return false; }
   }
 };

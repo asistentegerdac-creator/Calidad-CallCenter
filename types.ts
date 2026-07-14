@@ -92,3 +92,10 @@ export const DIMENSIONS = [
   'Privacidad',
   'Comunicación / Información'
 ];
+
+export interface DimensionCatalogEntry {
+  id?: number;
+  dimension: string;
+  subDimension: string;
+}
+

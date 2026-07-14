@@ -224,6 +224,50 @@ export const Tardanzas: React.FC<Props> = ({
     return groupedDoctors.find(doc => doc.doctorName.toUpperCase() === selectedDoctor.toUpperCase()) || null;
   }, [selectedDoctor, groupedDoctors]);
 
+  const activeDoctorStats = useMemo(() => {
+    if (!activeDoctorData) return null;
+    
+    const getWeekdayName = (dateStr: string) => {
+      try {
+        const date = new Date(dateStr + 'T00:00:00');
+        const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        return days[date.getDay()];
+      } catch {
+        return '';
+      }
+    };
+
+    const weekdayCounts: Record<string, number> = {};
+    let topDay = 'N/A';
+    let topDayCount = 0;
+    
+    activeDoctorData.complaints.forEach(c => {
+      const day = getWeekdayName(c.date);
+      if (day) {
+        weekdayCounts[day] = (weekdayCounts[day] || 0) + 1;
+        if (weekdayCounts[day] > topDayCount) {
+          topDayCount = weekdayCounts[day];
+          topDay = day;
+        }
+      }
+    });
+
+    const correctiveCounts: Record<string, number> = {};
+    activeDoctorData.complaints.forEach(c => {
+      if (c.status === ComplaintStatus.RESUELTO && c.correctiveMeasure) {
+        correctiveCounts[c.correctiveMeasure] = (correctiveCounts[c.correctiveMeasure] || 0) + 1;
+      }
+    });
+    const sortedMeasures = Object.entries(correctiveCounts).sort((a,b) => b[1]-a[1]);
+    const topMeasure = sortedMeasures[0]?.[0] || 'Ninguna registrada';
+
+    return {
+      topDay,
+      topDayCount,
+      topMeasure
+    };
+  }, [activeDoctorData]);
+
   const handleSelectDoctor = (docName: string) => {
     setSelectedDoctor(docName);
     setInvolvedPersonnel(docName);
@@ -687,6 +731,30 @@ export const Tardanzas: React.FC<Props> = ({
                       ))}
                     </div>
                   </div>
+
+                  {/* HELPFUL CONTROL INDICATORS */}
+                  {activeDoctorStats && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-slate-500 block">Día de Mayor Incidencia</span>
+                        <span className="text-sm font-black text-slate-800 uppercase block mt-1">
+                          {activeDoctorStats.topDay}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-semibold block mt-0.5">
+                          Acumula {activeDoctorStats.topDayCount} demoras este día
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-slate-500 block">Medida Correctiva Frecuente</span>
+                        <span className="text-sm font-black text-slate-800 uppercase block mt-1 truncate" title={activeDoctorStats.topMeasure}>
+                          {activeDoctorStats.topMeasure}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-semibold block mt-0.5">
+                          Última medida aplicada en gestión
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* DETAILED LIST OF COMPLAINTS */}
                   <div className="space-y-3">

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/apiService';
-import { User, Complaint, AreaMapping, ComplaintStatus } from '../types';
+import { User, Complaint, AreaMapping, ComplaintStatus, DimensionCatalogEntry } from '../types';
 
 interface Props {
   areas: string[]; onAddArea: (a: string) => void; onRemoveArea: (a: string) => void;
@@ -12,13 +12,17 @@ interface Props {
   currentTheme: string; setTheme: (t: string) => void;
   timezone: string; setTimezone: (tz: string) => void;
   complaints: Complaint[]; setComplaints: (c: Complaint[]) => void;
+  dimensions: DimensionCatalogEntry[];
+  onAddDimension: (dimension: string, subDimension: string) => void;
+  onRemoveDimension: (id?: number, dimension?: string, subDimension?: string) => void;
 }
 
 export const Settings: React.FC<Props> = ({ 
   users, setUsers, isOnline, onConnStatusChange,
   currentTheme, setTheme, timezone, setTimezone, areas, onAddArea, onRemoveArea,
   specialties, onAddSpecialty, onRemoveSpecialty,
-  complaints, setComplaints
+  complaints, setComplaints,
+  dimensions, onAddDimension, onRemoveDimension
 }) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -32,6 +36,11 @@ export const Settings: React.FC<Props> = ({
   const [newUser, setNewUser] = useState({ id: '', username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' | 'auditor' });
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({ type: 'area', value: '' });
+
+  const [newDim, setNewDim] = useState('');
+  const [newSubDim, setNewSubDim] = useState('');
+  const [selectedParentDim, setSelectedParentDim] = useState('');
+  const [dimSearchFilter, setDimSearchFilter] = useState('');
 
   const [dbParams, setDbParams] = useState(() => {
     let host = 'localhost';
@@ -210,6 +219,8 @@ export const Settings: React.FC<Props> = ({
     }
   };
 
+  const uniqueDimensions = Array.from(new Set(dimensions.map(d => d.dimension).filter(Boolean)));
+
   return (
     <div className="space-y-12 pb-20">
       {/* HERRAMIENTAS DE DATOS */}
@@ -345,6 +356,155 @@ export const Settings: React.FC<Props> = ({
              <div className="flex gap-2">
                 <input className="flex-1 p-3 bg-slate-50 border rounded-xl text-xs" value={newItem.type==='spec'?newItem.value:''} onChange={e=>setNewItem({type:'spec', value:e.target.value})} />
                 <button onClick={() => { if(newItem.value) onAddSpecialty(newItem.value); setNewItem({...newItem, value:''}); }} className="px-4 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase">Ok</button>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* GESTIÓN DE DIMENSIONES Y SUBDIMENSIONES */}
+      <div className="glass-card p-10 bg-white shadow-xl border border-slate-50">
+        <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
+          <span className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center text-white text-sm">📊</span>
+          Dimensiones y Subdimensiones
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div className="space-y-6">
+            {/* CARGAR DIMENSIÓN */}
+            <div className="space-y-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+               <h4 className="text-xs font-black uppercase text-teal-600 flex items-center gap-2">
+                 <span className="w-2 h-2 bg-teal-600 rounded-full"></span>
+                 Cargar Dimensión Principal
+               </h4>
+               <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight">
+                 Registra una categoría de dimensionamiento independiente.
+               </p>
+               
+               <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-400 block">Nombre de la Dimensión</label>
+                  <input 
+                    className="w-full p-4 bg-white border rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-teal-500" 
+                    placeholder="Ej: Fiabilidad o Confiabilidad, Buen trato, etc." 
+                    value={newDim} 
+                    onChange={e => setNewDim(e.target.value)} 
+                  />
+               </div>
+
+               <button 
+                 onClick={() => {
+                   if (!newDim.trim()) {
+                     alert("Debe ingresar el nombre de la Dimensión.");
+                     return;
+                   }
+                   onAddDimension(newDim, "General");
+                   setNewDim('');
+                   alert("Dimensión principal registrada con éxito.");
+                 }} 
+                 className="w-full py-4 bg-teal-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-teal-700 transition-all shadow-md"
+               >
+                 Agregar Dimensión
+               </button>
+            </div>
+
+            {/* CARGAR SUBDIMENSIÓN */}
+            <div className="space-y-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+               <h4 className="text-xs font-black uppercase text-indigo-600 flex items-center gap-2">
+                 <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>
+                 Cargar Subdimensión
+               </h4>
+               <p className="text-[10px] text-slate-400 font-bold uppercase leading-tight">
+                 Asocia una sub-categoría específica a una dimensión ya existente.
+               </p>
+
+               <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-400 block">Dimensión Principal</label>
+                  <select 
+                    className="w-full p-4 bg-white border rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={selectedParentDim}
+                    onChange={e => setSelectedParentDim(e.target.value)}
+                  >
+                    <option value="">-- Seleccionar Dimensión Principal --</option>
+                    {uniqueDimensions.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+               </div>
+
+               <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-400 block">Nombre de la Subdimensión</label>
+                  <input 
+                    className="w-full p-4 bg-white border rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500" 
+                    placeholder="Ej: Demora en consulta, Desidia, etc." 
+                    value={newSubDim} 
+                    onChange={e => setNewSubDim(e.target.value)} 
+                  />
+               </div>
+
+               <button 
+                 onClick={() => {
+                   if (!selectedParentDim) {
+                     alert("Debe seleccionar una Dimensión Principal.");
+                     return;
+                   }
+                   if (!newSubDim.trim()) {
+                     alert("Debe ingresar el nombre de la Subdimensión.");
+                     return;
+                   }
+                   onAddDimension(selectedParentDim, newSubDim);
+                   setNewSubDim('');
+                   alert("Subdimensión registrada con éxito.");
+                 }} 
+                 className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md"
+               >
+                 Agregar Subdimensión
+               </button>
+            </div>
+          </div>
+
+          <div className="space-y-4 flex flex-col">
+             <div className="flex justify-between items-center">
+                <h4 className="text-xs font-black uppercase text-slate-500">Elementos Registrados ({dimensions.length})</h4>
+                <input 
+                  className="p-2 bg-slate-50 border rounded-xl text-xs w-48 font-semibold outline-none" 
+                  placeholder="🔍 Filtrar dimensión..." 
+                  value={dimSearchFilter} 
+                  onChange={e => setDimSearchFilter(e.target.value)} 
+                />
+             </div>
+
+             <div className="border rounded-[2rem] overflow-hidden bg-white max-h-[300px] overflow-y-auto shadow-inner">
+                <table className="w-full text-left">
+                   <thead className="bg-slate-50 text-[9px] font-black text-slate-400 sticky top-0">
+                     <tr>
+                       <th className="px-6 py-4">Dimensión</th>
+                       <th className="px-6 py-4">Subdimensión</th>
+                       <th className="px-6 py-4 text-right">Acción</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y text-[10px] font-black">
+                      {dimensions
+                        .filter(d => !dimSearchFilter || d.dimension.toLowerCase().includes(dimSearchFilter.toLowerCase()))
+                        .map((d, index) => (
+                           <tr key={d.id || index} className="hover:bg-slate-50">
+                              <td className="px-6 py-3 text-slate-700">{d.dimension}</td>
+                              <td className="px-6 py-3 text-teal-600">{d.subDimension}</td>
+                              <td className="px-6 py-3 text-right">
+                                 <button 
+                                   onClick={() => onRemoveDimension(d.id, d.dimension, d.subDimension)} 
+                                   className="text-rose-500 hover:scale-110 transition-all font-bold px-2 py-1"
+                                 >
+                                   ✕
+                                 </button>
+                              </td>
+                           </tr>
+                        ))
+                      }
+                      {dimensions.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="text-center py-8 text-slate-400 font-bold uppercase text-[9px]">Sin dimensiones registradas</td>
+                        </tr>
+                      )}
+                   </tbody>
+                </table>
              </div>
           </div>
         </div>

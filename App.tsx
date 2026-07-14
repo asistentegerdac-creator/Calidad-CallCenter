@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Complaint, View, User, ComplaintStatus, NoCallPatient } from './types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Complaint, View, User, ComplaintStatus, NoCallPatient, DimensionCatalogEntry } from './types';
 import { Dashboard } from './components/Dashboard';
 import { ComplaintForm } from './components/ComplaintForm';
 import { Reports } from './components/Reports';
@@ -58,6 +58,30 @@ const App: React.FC = () => {
     }
   });
 
+  const [dimensions, setDimensions] = useState<DimensionCatalogEntry[]>(() => {
+    try {
+      const stored = localStorage.getItem('dac_dimensions');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [
+      { dimension: 'Fiabilidad o Confiabilidad', subDimension: 'General' },
+      { dimension: 'Capacidad de Respuesta', subDimension: 'General' },
+      { dimension: 'Seguridad o Aseguramiento', subDimension: 'General' },
+      { dimension: 'Empatía', subDimension: 'General' },
+      { dimension: 'Aspectos Tangibles', subDimension: 'General' },
+      { dimension: 'Buen trato', subDimension: 'General' },
+      { dimension: 'Privacidad', subDimension: 'General' },
+      { dimension: 'Comunicación / Información', subDimension: 'General' }
+    ];
+  });
+
+  const complaintsForView = useMemo(() => {
+    if (currentUser?.role === 'agent') {
+      return complaints.filter(c => c.managerName === currentUser.name);
+    }
+    return complaints;
+  }, [complaints, currentUser]);
+
   useEffect(() => {
     console.log("DAC App Initialized");
   }, []);
@@ -105,6 +129,14 @@ const App: React.FC = () => {
 
       const remoteSpecs = await dbService.fetchSpecialties();
       if (remoteSpecs.length > 0) setSpecialties(remoteSpecs);
+
+      const remoteDims = await dbService.fetchDimensions();
+      if (remoteDims.length > 0) {
+        setDimensions(remoteDims);
+        try {
+          localStorage.setItem('dac_dimensions', JSON.stringify(remoteDims));
+        } catch {}
+      }
     } catch (e) { console.error("Error Sync:", e); }
   }, [isOnline]);
 
@@ -203,6 +235,51 @@ const App: React.FC = () => {
       localStorage.setItem('dac_specialties', JSON.stringify(newSpecs));
     } catch {}
     if (isOnline) await dbService.deleteSpecialtyCatalog(name);
+  };
+
+  const handleAddDimension = async (dimension: string, subDimension: string) => {
+    const cleanDim = dimension.trim();
+    const cleanSub = subDimension.trim() || 'General';
+    if (!cleanDim) return;
+    if (dimensions.some(d => d.dimension.toLowerCase() === cleanDim.toLowerCase() && d.subDimension.toLowerCase() === cleanSub.toLowerCase())) return;
+    
+    if (isOnline) {
+      await dbService.saveDimension(cleanDim, cleanSub);
+      const remoteDims = await dbService.fetchDimensions();
+      if (remoteDims.length > 0) {
+        setDimensions(remoteDims);
+        try {
+          localStorage.setItem('dac_dimensions', JSON.stringify(remoteDims));
+        } catch {}
+        return;
+      }
+    }
+    const newEntry: DimensionCatalogEntry = { dimension: cleanDim, subDimension: cleanSub };
+    const newDims = [...dimensions, newEntry];
+    setDimensions(newDims);
+    try {
+      localStorage.setItem('dac_dimensions', JSON.stringify(newDims));
+    } catch {}
+  };
+
+  const handleRemoveDimension = async (id?: number, dimension?: string, subDimension?: string) => {
+    if (isOnline && id !== undefined) {
+      await dbService.deleteDimension(id);
+      const remoteDims = await dbService.fetchDimensions();
+      setDimensions(remoteDims);
+      try {
+        localStorage.setItem('dac_dimensions', JSON.stringify(remoteDims));
+      } catch {}
+    } else {
+      const newDims = dimensions.filter(d => {
+        if (id !== undefined && d.id !== undefined) return d.id !== id;
+        return !(d.dimension === dimension && d.subDimension === subDimension);
+      });
+      setDimensions(newDims);
+      try {
+        localStorage.setItem('dac_dimensions', JSON.stringify(newDims));
+      } catch {}
+    }
   };
 
   const handleNavigate = (view: View) => {
@@ -324,14 +401,14 @@ const App: React.FC = () => {
           {/* CONTENIDO PRINCIPAL */}
           <main className="flex-1 w-full min-w-0 p-4 md:p-10 overflow-x-hidden">
             <div className="max-w-7xl mx-auto pt-12 md:pt-0">
-              {activeView === 'dashboard' && <Dashboard complaints={complaints} />}
-              {activeView === 'incidences' && <IncidencesReported complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} users={users} />}
-              {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} />}
-              {activeView === 'reports' && <Reports complaints={complaints} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} users={users} />}
-              {activeView === 'analytics' && <AnalyticsView complaints={complaints} />}
-              {activeView === 'tardanzas' && <Tardanzas complaints={complaints} currentUser={currentUser} onUpdateFull={handleUpdateFull} timezone={timezone} areas={areas} />}
+              {activeView === 'dashboard' && <Dashboard complaints={complaintsForView} />}
+              {activeView === 'incidences' && <IncidencesReported complaints={complaintsForView} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} />}
+              {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} dimensions={dimensions} onAddDimension={handleAddDimension} />}
+              {activeView === 'reports' && <Reports complaints={complaintsForView} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} />}
+              {activeView === 'analytics' && <AnalyticsView complaints={complaintsForView} />}
+              {activeView === 'tardanzas' && <Tardanzas complaints={complaintsForView} currentUser={currentUser} onUpdateFull={handleUpdateFull} timezone={timezone} areas={areas} />}
               {activeView === 'no-call' && <NoCallList noCallList={noCallList} isOnline={isOnline} onRefresh={autoSync} />}
-              {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} timezone={timezone} setTimezone={setTimezone} />}
+              {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} timezone={timezone} setTimezone={setTimezone} dimensions={dimensions} onAddDimension={handleAddDimension} onRemoveDimension={handleRemoveDimension} />}
             </div>
           </main>
         </>
