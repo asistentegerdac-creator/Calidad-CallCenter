@@ -122,6 +122,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
   const [filterDimension, setFilterDimension] = useState('Todas');
+  const [filterType, setFilterType] = useState('Todos');
   const [dateFrom, setDateFrom] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   
@@ -216,6 +217,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       [ComplaintStatus.PROCESO]: 1,
       [ComplaintStatus.RESUELTO]: 2,
       [ComplaintStatus.CERRADO]: 3,
+      [ComplaintStatus.LEIDO]: 4,
     };
 
     return [...complaints]
@@ -233,8 +235,22 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         const matchArea = filterArea === 'Todas' ? true : c.area === filterArea;
         const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
         const matchDimension = filterDimension === 'Todas' ? true : c.dimension === filterDimension;
+        
+        let matchType = filterType === 'Todos' ? true : c.complaintType === filterType;
+        if (filterType === 'Felicitación') {
+          matchType = (c.complaintType === 'Felicitación') || (c.dimension?.toLowerCase().includes('felicitaci'));
+        } else if (filterType === 'Sugerencia') {
+          matchType = (c.complaintType === 'Sugerencia') || (c.dimension?.toLowerCase().includes('sugerencia'));
+        } else if (filterType === 'Incidencia') {
+          const type = (c.complaintType || '').toLowerCase();
+          const dim = (c.dimension || '').toLowerCase();
+          const isSpecial = type.includes('felicitaci') || dim.includes('felicitaci') || 
+                            type.includes('sugerencia') || dim.includes('sugerencia');
+          matchType = !isSpecial;
+        }
+
         const matchDate = c.date >= dateFrom && c.date <= dateTo;
-        return matchManager && matchArea && matchStatus && matchDimension && matchDate;
+        return matchManager && matchArea && matchStatus && matchDimension && matchType && matchDate;
       })
       .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
   }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo, currentUser]);
@@ -504,6 +520,11 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       { header: 'ACCIÓN TOMADA', key: 'actionTaken', width: 35 },
       { header: 'MEDIDA CORRECTIVA', key: 'correctiveMeasure', width: 30 },
       { header: 'DETALLE OTRA MEDIDA', key: 'correctiveMeasureOther', width: 35 },
+      { header: 'TIPO', key: 'complaintType', width: 20 },
+      { header: 'APLICABLE (SUG)', key: 'isApplicable', width: 20 },
+      { header: 'MOTIVO NO APLICABLE', key: 'notApplicableReason', width: 35 },
+      { header: 'DETALLE IMPLEMENTACIÓN', key: 'implementationDetail', width: 35 },
+      { header: 'ÁREA DERIVADA', key: 'referredArea', width: 25 },
     ];
 
     // Aplicar estilos a la cabecera de la tabla de datos
@@ -543,7 +564,12 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         involvedPersonnel: item.involvedPersonnel || 'N/A',
         actionTaken: item.actionTaken || 'N/A',
         correctiveMeasure: item.correctiveMeasure || 'N/A',
-        correctiveMeasureOther: item.correctiveMeasureOther || ''
+        correctiveMeasureOther: item.correctiveMeasureOther || '',
+        complaintType: item.complaintType || (item.dimension?.toLowerCase().includes('felicitaci') ? 'Felicitación' : (item.dimension?.toLowerCase().includes('sugerencia') ? 'Sugerencia' : 'Incidencia')),
+        isApplicable: item.isApplicable === true ? 'SÍ' : (item.isApplicable === false ? 'NO' : 'N/A'),
+        notApplicableReason: item.notApplicableReason || '',
+        implementationDetail: item.implementationDetail || '',
+        referredArea: item.referredArea || ''
       });
 
       // Estilo de celdas de datos
@@ -969,6 +995,15 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
             <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterDimension} onChange={e => setFilterDimension(e.target.value)}>
               <option value="Todas">Todas</option>
               {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Tipo</label>
+            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterType} onChange={e => setFilterType(e.target.value)}>
+              <option value="Todos">Todos</option>
+              <option value="Incidencia">Incidencias</option>
+              <option value="Felicitación">Felicitaciones</option>
+              <option value="Sugerencia">Sugerencias</option>
             </select>
           </div>
           <div className="space-y-1">

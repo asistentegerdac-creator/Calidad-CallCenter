@@ -3,7 +3,14 @@ export enum ComplaintStatus {
   PENDIENTE = 'Pendiente',
   PROCESO = 'En Proceso',
   RESUELTO = 'Resuelto',
-  CERRADO = 'Cerrado'
+  CERRADO = 'Cerrado',
+  LEIDO = 'Leído'
+}
+
+export enum ComplaintType {
+  INCIDENCIA = 'Incidencia',
+  FELICITACION = 'Felicitación',
+  SUGERENCIA = 'Sugerencia'
 }
 
 export enum Priority {
@@ -48,6 +55,11 @@ export interface Complaint {
   actionTaken?: string;
   correctiveMeasure?: string;
   correctiveMeasureOther?: string;
+  complaintType?: ComplaintType;
+  isApplicable?: boolean;
+  notApplicableReason?: string;
+  implementationDetail?: string;
+  referredArea?: string;
 }
 
 export interface AreaMapping {
@@ -80,7 +92,7 @@ export interface User {
   permissions: string[];
 }
 
-export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'analytics' | 'settings' | 'no-call' | 'tardanzas';
+export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'analytics' | 'settings' | 'no-call' | 'tardanzas' | 'compliments_suggestions';
 
 export const DIMENSIONS = [
   'Fiabilidad o Confiabilidad',

@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Complaint, View, User, ComplaintStatus, NoCallPatient, DimensionCatalogEntry } from './types';
+import { Complaint, View, User, ComplaintStatus, ComplaintType, NoCallPatient, DimensionCatalogEntry } from './types';
 import { Dashboard } from './components/Dashboard';
 import { ComplaintForm } from './components/ComplaintForm';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { IncidencesReported } from './components/IncidencesReported';
+import { ComplimentsSuggestions } from './components/ComplimentsSuggestions';
 import { NoCallList } from './components/NoCallList';
 import { AnalyticsView } from './components/AnalyticsView';
 import { Tardanzas } from './components/Tardanzas';
@@ -76,11 +77,25 @@ const App: React.FC = () => {
   });
 
   const complaintsForView = useMemo(() => {
+    let filtered = complaints;
     if (currentUser?.role === 'agent') {
-      return complaints.filter(c => c.managerName === currentUser.name);
+      filtered = filtered.filter(c => c.managerName === currentUser.name);
     }
-    return complaints;
+    return filtered;
   }, [complaints, currentUser]);
+
+  const incidencesOnly = useMemo(() => {
+    return complaintsForView.filter(c => {
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      
+      // Búsqueda exhaustiva para excluir de gestión
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      const isSugerencia = type.includes('sugerencia') || dim.includes('sugerencia');
+      
+      return !isFelicitacion && !isSugerencia;
+    });
+  }, [complaintsForView]);
 
   useEffect(() => {
     console.log("DAC App Initialized");
@@ -178,6 +193,18 @@ const App: React.FC = () => {
       localStorage.setItem('dac_complaints', JSON.stringify(newComplaints));
     } catch {}
     if (isOnline) await dbService.saveComplaint(c);
+
+    // Navegación inteligente según el tipo
+    const type = (c.complaintType || '').toLowerCase();
+    const dim = (c.dimension || '').toLowerCase();
+    const isSpecial = type.includes('felicitaci') || dim.includes('felicitaci') || 
+                      type.includes('sugerencia') || dim.includes('sugerencia');
+    
+    if (isSpecial) {
+      setActiveView('compliments_suggestions');
+    } else {
+      setActiveView('incidences');
+    }
   };
 
   const handleUpdateFull = async (updated: Complaint) => {
@@ -377,6 +404,7 @@ const App: React.FC = () => {
               {[
                 { id: 'dashboard', label: 'Monitor', icon: '📈' },
                 { id: 'incidences', label: 'Gestión', icon: '📑' },
+                { id: 'compliments_suggestions', label: 'Felicitaciones/Sugerencias', icon: '✨' },
                 { id: 'new-incidence', label: 'Reportar', icon: '➕' },
                 { id: 'reports', label: 'Informes', icon: '📋' },
                 { id: 'analytics', label: 'Reportes', icon: '📊' },
@@ -402,7 +430,8 @@ const App: React.FC = () => {
           <main className="flex-1 w-full min-w-0 p-4 md:p-10 overflow-x-hidden">
             <div className="max-w-7xl mx-auto pt-12 md:pt-0">
               {activeView === 'dashboard' && <Dashboard complaints={complaintsForView} />}
-              {activeView === 'incidences' && <IncidencesReported complaints={complaintsForView} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} />}
+              {activeView === 'incidences' && <IncidencesReported complaints={incidencesOnly} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} />}
+              {activeView === 'compliments_suggestions' && <ComplimentsSuggestions complaints={complaintsForView} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} timezone={timezone} areas={areas} users={users} />}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} dimensions={dimensions} onAddDimension={handleAddDimension} />}
               {activeView === 'reports' && <Reports complaints={complaintsForView} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} />}
               {activeView === 'analytics' && <AnalyticsView complaints={complaintsForView} />}

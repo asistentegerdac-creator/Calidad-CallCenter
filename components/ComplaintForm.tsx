@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Complaint, ComplaintStatus, Priority, NoCallPatient, DimensionCatalogEntry } from '../types';
+import { Complaint, ComplaintStatus, Priority, NoCallPatient, DimensionCatalogEntry, ComplaintType } from '../types';
 import { analyzeComplaint } from '../services/geminiService';
 import { dbService } from '../services/apiService';
 import { getLocalDateInTimezone, getCurrentTimeInTimezone } from '../src/utils/timeUtils';
@@ -27,6 +27,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     date: getLocalDateInTimezone(timezone),
     dimension: '',
     subDimension: '',
+    complaintType: ComplaintType.INCIDENCIA,
     evidenceImages: [] as string[]
   });
 
@@ -102,7 +103,15 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
     let finalDim = formData.dimension;
     let finalSub = formData.subDimension;
 
-    if (formData.dimension === 'ADD_NEW_DIM') {
+    if (formData.complaintType === ComplaintType.FELICITACION) {
+      finalDim = 'Felicitaciones';
+      finalSub = 'General';
+    } else if (formData.complaintType === ComplaintType.SUGERENCIA) {
+      finalDim = 'Sugerencias';
+      finalSub = 'General';
+    }
+
+    if (formData.dimension === 'ADD_NEW_DIM' && formData.complaintType === ComplaintType.INCIDENCIA) {
       if (!customDimension.trim()) {
         alert("Por favor ingrese la nueva dimensión.");
         return;
@@ -110,7 +119,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       finalDim = customDimension.trim();
     }
 
-    if (formData.subDimension === 'ADD_NEW_SUB_DIM') {
+    if (formData.subDimension === 'ADD_NEW_SUB_DIM' && formData.complaintType === ComplaintType.INCIDENCIA) {
       if (!customSubDimension.trim()) {
         alert("Por favor ingrese la nueva subdimensión.");
         return;
@@ -118,13 +127,23 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       finalSub = customSubDimension.trim();
     }
 
-    if (!formData.description || !formData.area || !formData.specialty || !finalDim) {
+    if (formData.complaintType === ComplaintType.INCIDENCIA && (!formData.description || !formData.area || !formData.specialty || !finalDim)) {
       alert("Por favor complete Área, Especialidad y Dimensión");
       return;
     }
 
+    if (formData.complaintType === ComplaintType.SUGERENCIA && (!formData.description || !formData.area || !formData.patientName)) {
+      alert("Por favor complete Área, Nombre del Paciente y la Sugerencia");
+      return;
+    }
+
+    if (formData.complaintType === ComplaintType.FELICITACION && (!formData.description || !formData.area)) {
+      alert("Por favor complete Área y el detalle de la Felicitación");
+      return;
+    }
+
     // Agregar dinámicamente si es un elemento nuevo
-    if (formData.dimension === 'ADD_NEW_DIM' || formData.subDimension === 'ADD_NEW_SUB_DIM') {
+    if (formData.complaintType === ComplaintType.INCIDENCIA && (formData.dimension === 'ADD_NEW_DIM' || formData.subDimension === 'ADD_NEW_SUB_DIM')) {
       await onAddDimension(finalDim, finalSub || 'General');
     }
 
@@ -151,6 +170,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       doctorName: '', 
       dimension: dimensions[0]?.dimension || '',
       subDimension: '',
+      complaintType: ComplaintType.INCIDENCIA,
       satisfaction: 3, 
       date: getLocalDateInTimezone(timezone) 
     });
@@ -181,6 +201,21 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
       
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="space-y-1 md:col-span-2 lg:col-span-2">
+            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Tipo de Registro</label>
+            <div className="flex gap-2">
+              {Object.values(ComplaintType).map(t => (
+                <button 
+                  key={t}
+                  type="button"
+                  onClick={() => setFormData({...formData, complaintType: t as ComplaintType})}
+                  className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all border-2 ${formData.complaintType === t ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-200'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Fecha del Evento</label>
             <input type="date" required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
@@ -192,95 +227,111 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
               {areas.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad Médica</label>
-            <select required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}>
-              <option value="">-- Seleccione Especialidad --</option>
-              {specialties.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe de Área (Automático)</label>
-            <input disabled className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-black text-sm text-amber-600" value={formData.managerName || 'SIN ASIGNAR'} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
-            <select 
-              required 
-              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" 
-              value={formData.dimension} 
-              onChange={e => setFormData({...formData, dimension: e.target.value, subDimension: ''})}
-            >
-              <option value="">-- Seleccione Dimensión --</option>
-              {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
-              <option value="ADD_NEW_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
-            </select>
-            {formData.dimension === 'ADD_NEW_DIM' && (
-              <input 
-                required
-                className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none placeholder-teal-600"
-                placeholder="Nueva Dimensión..."
-                value={customDimension}
-                onChange={e => setCustomDimension(e.target.value)}
-              />
-            )}
-          </div>
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Sub Dimensión</label>
-            <select 
-              required
-              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" 
-              value={formData.subDimension} 
-              onChange={e => setFormData({...formData, subDimension: e.target.value})}
-            >
-              <option value="">-- Seleccione Subdimensión --</option>
-              {availableSubDimensions.map(s => <option key={s} value={s}>{s}</option>)}
-              <option value="ADD_NEW_SUB_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
-            </select>
-            {formData.subDimension === 'ADD_NEW_SUB_DIM' && (
-              <input 
-                required
-                className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none placeholder-teal-600"
-                placeholder="Nueva Subdimensión..."
-                value={customSubDimension}
-                onChange={e => setCustomSubDimension(e.target.value)}
-              />
-            )}
-          </div>
-          <div className="space-y-1 md:col-span-2 lg:col-span-2">
+          
+          {formData.complaintType === ComplaintType.INCIDENCIA && (
+            <>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Especialidad Médica</label>
+                <select required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}>
+                  <option value="">-- Seleccione Especialidad --</option>
+                  {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Jefe de Área (Automático)</label>
+                <input disabled className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-black text-sm text-amber-600" value={formData.managerName || 'SIN ASIGNAR'} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
+                <select 
+                  required 
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" 
+                  value={formData.dimension} 
+                  onChange={e => setFormData({...formData, dimension: e.target.value, subDimension: ''})}
+                >
+                  <option value="">-- Seleccione Dimensión --</option>
+                  {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
+                  <option value="ADD_NEW_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
+                </select>
+                {formData.dimension === 'ADD_NEW_DIM' && (
+                  <input 
+                    required
+                    className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none placeholder-teal-600"
+                    placeholder="Nueva Dimensión..."
+                    value={customDimension}
+                    onChange={e => setCustomDimension(e.target.value)}
+                  />
+                )}
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Sub Dimensión</label>
+                <select 
+                  required
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" 
+                  value={formData.subDimension} 
+                  onChange={e => setFormData({...formData, subDimension: e.target.value})}
+                >
+                  <option value="">-- Seleccione Subdimensión --</option>
+                  {availableSubDimensions.map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="ADD_NEW_SUB_DIM" className="text-teal-600 font-bold">+ Agregar nueva...</option>
+                </select>
+                {formData.subDimension === 'ADD_NEW_SUB_DIM' && (
+                  <input 
+                    required
+                    className="w-full bg-teal-50 border border-teal-200 rounded-xl p-3 font-bold text-xs mt-1 outline-none placeholder-teal-600"
+                    placeholder="Nueva Subdimensión..."
+                    value={customSubDimension}
+                    onChange={e => setCustomSubDimension(e.target.value)}
+                  />
+                )}
+              </div>
+            </>
+          )}
+
+          <div className={`space-y-1 ${formData.complaintType === ComplaintType.INCIDENCIA ? 'md:col-span-2 lg:col-span-2' : 'md:col-span-2 lg:col-span-2'}`}>
             <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nombre del Paciente</label>
-            <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} placeholder="Nombre completo..." />
+            <input required={formData.complaintType !== ComplaintType.FELICITACION} className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} placeholder="Nombre completo..." />
           </div>
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Teléfono de Contacto</label>
-            <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientPhone} onChange={e => setFormData({...formData, patientPhone: e.target.value})} placeholder="Ej: 999 888 777" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Personal / Médico</label>
-            <input className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.doctorName} onChange={e => setFormData({...formData, doctorName: e.target.value})} placeholder="Dr. Nombre..." />
-          </div>
+
+          {formData.complaintType === ComplaintType.INCIDENCIA && (
+            <>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Teléfono de Contacto</label>
+                <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.patientPhone} onChange={e => setFormData({...formData, patientPhone: e.target.value})} placeholder="Ej: 999 888 777" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Personal / Médico</label>
+                <input className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 font-bold text-sm" value={formData.doctorName} onChange={e => setFormData({...formData, doctorName: e.target.value})} placeholder="Dr. Nombre..." />
+              </div>
+            </>
+          )}
         </div>
 
         <div className="space-y-2">
-          <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Relato de la Incidencia</label>
-          <textarea required className="w-full bg-slate-50 border rounded-2xl p-6 font-bold text-sm h-32 focus:ring-2 ring-amber-500 outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Describa detalladamente lo ocurrido para el análisis de IA..." />
+          <label className="text-[9px] font-black text-slate-400 uppercase ml-2">
+            {formData.complaintType === ComplaintType.INCIDENCIA ? 'Relato de la Incidencia' : 
+             formData.complaintType === ComplaintType.SUGERENCIA ? 'Detalle de la Sugerencia' : 'Detalle de la Felicitación'}
+          </label>
+          <textarea required className="w-full bg-slate-50 border rounded-2xl p-6 font-bold text-sm h-32 focus:ring-2 ring-amber-500 outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Describa detalladamente lo ocurrido..." />
         </div>
 
-        <div className="space-y-3">
-            <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
-            <div className="flex flex-wrap gap-3">
-              {evidenceImages.map((img, idx) => (
-                <div key={idx} className="relative group">
-                  <img src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border-2 border-slate-200" />
-                  <button type="button" onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-100 transition-opacity">×</button>
-                </div>
-              ))}
-              <label className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all text-slate-300 hover:text-blue-500 hover:border-blue-500">
-                <span className="text-lg font-bold">+</span>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
-              </label>
-            </div>
-        </div>
+        {formData.complaintType === ComplaintType.INCIDENCIA && (
+          <div className="space-y-3">
+              <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sustento (Imágenes)</label>
+              <div className="flex flex-wrap gap-3">
+                {evidenceImages.map((img, idx) => (
+                  <div key={idx} className="relative group">
+                    <img src={img} alt="Sustento" className="w-16 h-16 object-cover rounded-xl border-2 border-slate-200" />
+                    <button type="button" onClick={() => setEvidenceImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-100 transition-opacity">×</button>
+                  </div>
+                ))}
+                <label className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all text-slate-300 hover:text-blue-500 hover:border-blue-500">
+                  <span className="text-lg font-bold">+</span>
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                </label>
+              </div>
+          </div>
+        )}
 
         <div className="flex flex-col md:flex-row gap-8 items-center justify-between p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
           <div className="space-y-3">
@@ -294,7 +345,7 @@ export const ComplaintForm: React.FC<Props> = ({ areas, specialties, onAdd, noCa
             </div>
           </div>
           <button disabled={loading} className="w-full md:w-auto px-16 py-6 neo-warm-button rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-2xl disabled:opacity-50">
-            {loading ? 'ANALIZANDO...' : 'REGISTRAR INCIDENCIA'}
+            {loading ? 'ANALIZANDO...' : `REGISTRAR ${formData.complaintType.toUpperCase()}`}
           </button>
         </div>
       </form>

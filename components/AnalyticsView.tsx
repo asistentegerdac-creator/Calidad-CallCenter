@@ -72,6 +72,15 @@ export const AnalyticsView: React.FC<Props> = ({ complaints }) => {
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [complaints]);
 
+  const typeStats = useMemo(() => {
+    const counts: Record<string, number> = { 'Incidencia': 0, 'Felicitación': 0, 'Sugerencia': 0 };
+    complaints.forEach(c => {
+      const t = c.complaintType || 'Incidencia';
+      counts[t] = (counts[t] || 0) + 1;
+    });
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [complaints]);
+
   const exportExcel = async () => {
     try {
       const workbook = new ExcelJS.Workbook();
@@ -251,6 +260,22 @@ export const AnalyticsView: React.FC<Props> = ({ complaints }) => {
                 <YAxis tick={{fontSize: 10, fontWeight: '900', fill: '#1e293b'}} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={{borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)'}} />
                 <Bar dataKey="value" name="Frecuencia" fill="#f43f5e" radius={[15, 15, 0, 0]} barSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
+
+        {/* TIPO DE REGISTRO (Pie or Bar) */}
+        <motion.div variants={itemVariants} className="glass-card p-12 bg-white border border-slate-100 shadow-xl rounded-[3rem] min-h-[500px] flex flex-col">
+          <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-12 border-l-8 border-slate-900 pl-6">Distribución por Tipo de Registro</h3>
+          <div className="flex-1">
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={typeStats}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" tick={{fontSize: 11, fontWeight: '900', fill: '#1e293b'}} axisLine={false} tickLine={false} />
+                <YAxis tick={{fontSize: 10, fontWeight: '900', fill: '#1e293b'}} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)'}} />
+                <Bar dataKey="value" name="Cantidad" fill="#1e293b" radius={[15, 15, 0, 0]} barSize={60} />
               </BarChart>
             </ResponsiveContainer>
           </div>

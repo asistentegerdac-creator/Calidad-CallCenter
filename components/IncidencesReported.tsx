@@ -203,6 +203,7 @@ export const IncidencesReported: React.FC<Props> = ({
       [ComplaintStatus.PROCESO]: 1,
       [ComplaintStatus.RESUELTO]: 2,
       [ComplaintStatus.CERRADO]: 3,
+      [ComplaintStatus.LEIDO]: 4,
     };
 
     return [...complaints]
@@ -223,6 +224,13 @@ export const IncidencesReported: React.FC<Props> = ({
         const matchDateFrom = dateFrom === '' ? true : c.date >= dateFrom;
         const matchDateTo = dateTo === '' ? true : c.date <= dateTo;
         
+        // Refuerzo de seguridad: No mostrar felicitaciones ni sugerencias en este módulo
+        const type = (c.complaintType || '').toLowerCase();
+        const dim = (c.dimension || '').toLowerCase();
+        const isSpecial = type.includes('felicitaci') || dim.includes('felicitaci') || 
+                          type.includes('sugerencia') || dim.includes('sugerencia');
+        if (isSpecial) return false;
+
         return matchManager && matchArea && matchStatus && matchDimension && matchDateFrom && matchDateTo;
       })
       .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
