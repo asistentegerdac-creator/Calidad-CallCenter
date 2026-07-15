@@ -236,24 +236,26 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
         const matchStatus = filterStatus === 'Todos' ? true : (filterStatus === 'Observados' ? c.isObserved : c.status === filterStatus);
         const matchDimension = filterDimension === 'Todas' ? true : c.dimension === filterDimension;
         
-        let matchType = filterType === 'Todos' ? true : c.complaintType === filterType;
+        const type = (c.complaintType || '').toLowerCase();
+        const dim = (c.dimension || '').toLowerCase();
+        const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+        const isSugerencia = type.includes('sugerencia') || dim.includes('sugerencia');
+        const isIncidencia = !isFelicitacion && !isSugerencia;
+
+        let matchType = true;
         if (filterType === 'Felicitación') {
-          matchType = (c.complaintType === 'Felicitación') || (c.dimension?.toLowerCase().includes('felicitaci'));
+          matchType = isFelicitacion;
         } else if (filterType === 'Sugerencia') {
-          matchType = (c.complaintType === 'Sugerencia') || (c.dimension?.toLowerCase().includes('sugerencia'));
+          matchType = isSugerencia;
         } else if (filterType === 'Incidencia') {
-          const type = (c.complaintType || '').toLowerCase();
-          const dim = (c.dimension || '').toLowerCase();
-          const isSpecial = type.includes('felicitaci') || dim.includes('felicitaci') || 
-                            type.includes('sugerencia') || dim.includes('sugerencia');
-          matchType = !isSpecial;
+          matchType = isIncidencia;
         }
 
         const matchDate = c.date >= dateFrom && c.date <= dateTo;
         return matchManager && matchArea && matchStatus && matchDimension && matchType && matchDate;
       })
       .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
-  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo, currentUser]);
+  }, [complaints, filterManager, filterArea, filterStatus, filterDimension, filterType, dateFrom, dateTo, currentUser]);
 
   const groupedByManager = useMemo(() => {
     const groups: Record<string, Complaint[]> = {};

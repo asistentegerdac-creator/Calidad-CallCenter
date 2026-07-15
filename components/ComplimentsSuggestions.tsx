@@ -48,6 +48,15 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
     });
   }, [complaints, activeTab, filterArea, filterManager, filterStatus]);
 
+  const getStatusBadgeClass = (status: ComplaintStatus) => {
+    switch (status) {
+      case ComplaintStatus.PENDIENTE: return 'bg-orange-500 text-white shadow-lg shadow-orange-200';
+      case ComplaintStatus.LEIDO: return 'bg-blue-500 text-white shadow-lg shadow-blue-200';
+      case ComplaintStatus.RESUELTO: return 'bg-emerald-500 text-white shadow-lg shadow-emerald-200';
+      default: return 'bg-slate-500 text-white';
+    }
+  };
+
   const handleMarkAsRead = (c: Complaint) => {
     onUpdateFull({
       ...c,
@@ -149,78 +158,89 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {filtered.length === 0 ? (
-          <div className="col-span-full py-20 text-center glass-card bg-white border-dashed border-2 border-slate-200">
-             <p className="text-slate-400 font-black uppercase text-[10px]">No hay {activeTab.toLowerCase()}s registradas</p>
+          <div className="col-span-full py-24 text-center glass-card bg-white border-dashed border-2 border-slate-200 rounded-[3rem]">
+             <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span className="text-4xl">✨</span>
+             </div>
+             <h4 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Sin registros pendientes</h4>
+             <p className="text-slate-400 font-black uppercase text-[10px] mt-2 tracking-widest">No se encontraron {activeTab.toLowerCase()}s con los filtros seleccionados</p>
           </div>
         ) : (
           filtered.map(c => (
-            <div key={c.id} className="glass-card bg-white p-8 border-t-[6px] border-slate-900 hover:shadow-2xl transition-all flex flex-col min-h-[300px]">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
-                <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${c.status === ComplaintStatus.LEIDO || c.status === ComplaintStatus.RESUELTO ? 'bg-emerald-500 text-white' : 'bg-orange-500 text-white'}`}>
-                  {c.status}
-                </span>
-              </div>
-              
+            <div 
+              key={c.id} 
+              className={`glass-card bg-white p-8 border-t-[6px] hover:shadow-2xl transition-all duration-300 relative flex flex-col min-h-[420px] cursor-pointer group hover:scale-[1.05] hover:z-30 rounded-b-[2.5rem] ${c.status === ComplaintStatus.PENDIENTE ? 'border-orange-500 shadow-orange-100' : (c.status === ComplaintStatus.LEIDO ? 'border-blue-500 shadow-blue-100' : 'border-emerald-500 shadow-emerald-100')}`}
+              onClick={() => {
+                if (activeTab === ComplaintType.SUGERENCIA && c.status !== ComplaintStatus.RESUELTO) {
+                  setSelected(c);
+                }
+              }}
+            >
               <div className="mb-6">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Área</p>
-                <h4 className="text-sm font-black text-slate-900 uppercase">{c.area}</h4>
+                <div className="flex justify-between items-start">
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{c.id}</span>
+                  <div className="flex gap-2">
+                     <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${getStatusBadgeClass(c.status)}`}>
+                        {c.status}
+                     </span>
+                  </div>
+                </div>
+                <h4 className="text-xl font-black text-slate-900 leading-tight mt-3 group-hover:text-orange-600 transition-colors uppercase tracking-tight">
+                  {c.patientName || 'Anónimo'}
+                </h4>
+                <p className="text-[10px] font-bold text-slate-400 mt-1">{c.date}</p>
               </div>
 
-              {activeTab === ComplaintType.SUGERENCIA && (
-                <div className="mb-6">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Paciente</p>
-                  <p className="text-xs font-bold text-slate-700">{c.patientName}</p>
-                </div>
-              )}
+              <div className="space-y-4 mb-6">
+                 <div className="flex flex-wrap gap-2">
+                    <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 uppercase tracking-wider">{c.dimension || activeTab}</span>
+                    <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 uppercase tracking-wider">{c.area}</span>
+                 </div>
+                 {c.managerName && (
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-1">Jefatura Responsable</p>
+                      <p className="text-[12px] font-black text-slate-900 uppercase truncate">{c.managerName}</p>
+                   </div>
+                 )}
+              </div>
 
-              {activeTab === ComplaintType.FELICITACION && c.patientName && (
-                <div className="mb-6">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">De:</p>
-                  <p className="text-xs font-bold text-slate-700">{c.patientName}</p>
-                </div>
-              )}
-
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex-1 mb-6">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                  {activeTab === ComplaintType.FELICITACION ? 'Detalle' : 'Sugerencia'}
+              <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 flex-1 mb-6 overflow-hidden relative shadow-inner group-hover:bg-white transition-all group-hover:overflow-y-auto">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 italic">
+                  {activeTab === ComplaintType.FELICITACION ? 'Detalle del Reconocimiento' : 'Descripción de la Sugerencia'}
                 </p>
-                <p className="text-sm text-slate-600 font-medium leading-relaxed">"{c.description}"</p>
+                <p className="text-[13px] group-hover:text-[16px] text-slate-600 font-medium leading-relaxed line-clamp-5 group-hover:line-clamp-none transition-all duration-300">
+                  "{c.description}"
+                </p>
               </div>
 
-              <div className="pt-6 border-t border-slate-100">
+              <div className="pt-6 border-t border-slate-100 mt-auto">
                 {activeTab === ComplaintType.FELICITACION ? (
                   c.status !== ComplaintStatus.LEIDO ? (
                     <button 
-                      onClick={() => handleMarkAsRead(c)}
-                      className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg"
+                      onClick={(e) => { e.stopPropagation(); handleMarkAsRead(c); }}
+                      className="w-full py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl hover:shadow-emerald-200 flex items-center justify-center gap-2"
                     >
-                      Marcar como Leído
+                      <span>✓</span> Marcar como Leído
                     </button>
                   ) : (
-                    <div className="flex items-center justify-center gap-2 text-emerald-600 font-black text-[10px] uppercase">
-                      <span>✓</span> Leído por {c.resolvedBy}
+                    <div className="py-4 text-center bg-emerald-50 rounded-[1.5rem] border border-emerald-100">
+                       <p className="text-emerald-600 font-black text-[10px] uppercase tracking-widest">Leído por {c.resolvedBy}</p>
                     </div>
                   )
                 ) : (
-                  c.status !== ComplaintStatus.RESUELTO ? (
-                    <button 
-                      onClick={() => setSelected(c)}
-                      className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg"
-                    >
-                      Gestionar Sugerencia
-                    </button>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className={`text-center py-2 rounded-xl text-[9px] font-black uppercase ${c.isApplicable ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                        {c.isApplicable ? 'Aplicable' : 'No Aplicable'}
-                      </div>
-                      {!c.isApplicable && (
-                        <p className="text-[10px] text-slate-400 italic text-center">"{c.notApplicableReason}"</p>
-                      )}
+                  c.status === ComplaintStatus.RESUELTO ? (
+                    <div className="py-4 text-center bg-emerald-50 rounded-[1.5rem] border border-emerald-100">
+                       <p className="text-emerald-600 font-black text-[10px] uppercase tracking-widest">Sugerencia Gestionada</p>
                     </div>
+                  ) : (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setSelected(c); }}
+                      className="w-full py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl hover:shadow-blue-200 flex items-center justify-center gap-2"
+                    >
+                      <span>⚡</span> Gestionar Sugerencia
+                    </button>
                   )
                 )}
               </div>
