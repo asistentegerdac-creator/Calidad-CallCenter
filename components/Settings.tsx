@@ -1,7 +1,8 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService } from '../services/apiService';
 import { User, Complaint, AreaMapping, ComplaintStatus, DimensionCatalogEntry } from '../types';
+import { getCurrentTimeInTimezone } from '../src/utils/timeUtils';
 
 interface Props {
   areas: string[]; onAddArea: (a: string) => void; onRemoveArea: (a: string) => void;
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export const Settings: React.FC<Props> = ({ 
-  users, setUsers, isOnline, onConnStatusChange,
+  users, setUsers, currentUser, isOnline, onConnStatusChange,
   currentTheme, setTheme, timezone, setTimezone, areas, onAddArea, onRemoveArea,
   specialties, onAddSpecialty, onRemoveSpecialty,
   complaints, setComplaints,
@@ -41,6 +42,130 @@ export const Settings: React.FC<Props> = ({
   const [newSubDim, setNewSubDim] = useState('');
   const [selectedParentDim, setSelectedParentDim] = useState('');
   const [dimSearchFilter, setDimSearchFilter] = useState('');
+
+  // ESTADOS PARA MODIFICACIÓN DE ESTADO MASIVO
+  const [bulkManager, setBulkManager] = useState('Todas');
+  const [bulkDateFrom, setBulkDateFrom] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 2);
+    return d.toISOString().split('T')[0];
+  });
+  const [bulkDateTo, setBulkDateTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [bulkTypeFilter, setBulkTypeFilter] = useState('Todos');
+  const [bulkResponse, setBulkResponse] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isResolvingBulk, setIsResolvingBulk] = useState(false);
+
+  const managerOptions = useMemo(() => {
+    const set = new Set<string>();
+    users.forEach(u => { if (u.name) set.add(u.name); });
+    areaMappings.forEach(m => { if (m.managerName) set.add(m.managerName); });
+    complaints.forEach(c => { if (c.managerName) set.add(c.managerName); });
+    return Array.from(set).sort();
+  }, [users, areaMappings, complaints]);
+
+  const bulkComplaintsList = useMemo(() => {
+    return complaints.filter(c => {
+      if (bulkManager && bulkManager !== 'Todas') {
+        if (c.managerName !== bulkManager) return false;
+      }
+
+      const cDate = (c.date || '').trim().substring(0, 10);
+      if (bulkDateFrom && cDate < bulkDateFrom) return false;
+      if (bulkDateTo && cDate > bulkDateTo) return false;
+
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      const isSugerencia = type.includes('sugerencia') || dim.includes('sugerencia');
+      const isIncidencia = !isFelicitacion && !isSugerencia;
+
+      if (bulkTypeFilter === 'Incidencia' && !isIncidencia) return false;
+      if (bulkTypeFilter === 'Felicitación' && !isFelicitacion) return false;
+      if (bulkTypeFilter === 'Sugerencia' && !isSugerencia) return false;
+
+      if (isFelicitacion) {
+        return c.status === ComplaintStatus.PENDIENTE || c.status !== ComplaintStatus.LEIDO;
+      }
+      if (isSugerencia) {
+        return c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.status !== ComplaintStatus.RESUELTO;
+      }
+      return c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.isObserved || c.status !== ComplaintStatus.RESUELTO;
+    });
+  }, [complaints, bulkManager, bulkDateFrom, bulkDateTo, bulkTypeFilter]);
+
+  const handleResolveBulk = async () => {
+    if (bulkComplaintsList.length === 0) {
+      alert("No hay registros pendientes para los filtros seleccionados.");
+      return;
+    }
+
+    const itemsToResolve = selectedIds.size > 0 
+      ? bulkComplaintsList.filter(c => selectedIds.has(c.id))
+      : bulkComplaintsList;
+
+    if (itemsToResolve.length === 0) {
+      alert("Seleccione al menos un registro para resolver.");
+      return;
+    }
+
+    const managerLabel = bulkManager && bulkManager !== 'Todas' ? `de la jefatura "${bulkManager}"` : 'de todas las jefaturas';
+    if (!confirm(`¿Está seguro de marcar como RESUELTOS / LEÍDOS los ${itemsToResolve.length} registros pendientes ${managerLabel}?`)) {
+      return;
+    }
+
+    setIsResolvingBulk(true);
+    try {
+      const timestamp = getCurrentTimeInTimezone(timezone);
+      const resolvedByName = currentUser?.name || 'Administrador';
+
+      const updatedComplaints = complaints.map(c => {
+        const match = itemsToResolve.find(item => item.id === c.id);
+        if (!match) return c;
+
+        const type = (c.complaintType || '').toLowerCase();
+        const dim = (c.dimension || '').toLowerCase();
+        const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+
+        const history = c.responseHistory || [];
+        const newHistory = [
+          ...history,
+          {
+            text: bulkResponse.trim() || 'Resolución masiva de estado desde Ajustes.',
+            user: resolvedByName,
+            timestamp,
+            type: 'manager' as const
+          }
+        ];
+
+        const updatedItem: Complaint = {
+          ...c,
+          status: isFelicitacion ? ComplaintStatus.LEIDO : ComplaintStatus.RESUELTO,
+          resolvedAt: timestamp,
+          resolvedBy: resolvedByName,
+          managementResponse: c.managementResponse || bulkResponse.trim() || 'Resolución masiva de estado.',
+          responseHistory: newHistory,
+          isObserved: false
+        };
+
+        if (isOnline) {
+          dbService.saveComplaint(updatedItem);
+        }
+
+        return updatedItem;
+      });
+
+      setComplaints(updatedComplaints);
+      localStorage.setItem('dac_complaints', JSON.stringify(updatedComplaints));
+      setSelectedIds(new Set());
+      alert(`✅ Se han resuelto masivamente ${itemsToResolve.length} registros con éxito.`);
+    } catch (err) {
+      console.error("Error en resolución masiva:", err);
+      alert("Error al procesar la resolución masiva.");
+    } finally {
+      setIsResolvingBulk(false);
+    }
+  };
 
   const [dbParams, setDbParams] = useState(() => {
     let host = 'localhost';
@@ -282,6 +407,209 @@ export const Settings: React.FC<Props> = ({
                    {areaMappings.map(m => <tr key={m.areaName}><td className="py-2">{m.areaName}</td><td className="py-2 text-amber-600">{m.managerName}</td></tr>)}
                 </tbody>
              </table>
+          </div>
+        </div>
+      </div>
+
+      {/* SECCIÓN MODIFICACIÓN DE ESTADO MASIVO */}
+      <div className="glass-card p-8 md:p-10 bg-white shadow-xl border border-amber-100 rounded-[2.5rem]">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b pb-6">
+          <div>
+            <h3 className="text-xl font-black uppercase text-slate-900 flex items-center gap-3">
+              <span className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center text-slate-950 font-black text-base shadow-md">⚡</span>
+              Modificación de Estado Masivo
+            </h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+              Filtre casos pendientes o en proceso por Jefatura y Rango de Fechas para resolver masivamente
+            </p>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 px-5 py-3 rounded-2xl text-center">
+            <span className="text-[9px] font-black text-amber-700 uppercase block tracking-wider">Pendientes Detectados</span>
+            <span className="text-xl font-black text-amber-900 font-mono">{bulkComplaintsList.length}</span>
+          </div>
+        </div>
+
+        {/* FILTROS DE BÚSQUEDA */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-6 bg-slate-50 rounded-2xl border border-slate-100 mb-8">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-wider">Jefatura / Responsable</label>
+            <select 
+              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3.5 text-xs font-bold shadow-sm outline-none focus:border-amber-500 transition-all"
+              value={bulkManager}
+              onChange={e => setBulkManager(e.target.value)}
+            >
+              <option value="Todas">-- Todas las Jefaturas --</option>
+              {managerOptions.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-wider">Fecha Desde</label>
+            <input 
+              type="date"
+              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3.5 text-xs font-bold shadow-sm outline-none focus:border-amber-500 transition-all"
+              value={bulkDateFrom}
+              onChange={e => setBulkDateFrom(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-wider">Fecha Hasta</label>
+            <input 
+              type="date"
+              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3.5 text-xs font-bold shadow-sm outline-none focus:border-amber-500 transition-all"
+              value={bulkDateTo}
+              onChange={e => setBulkDateTo(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-wider">Tipo de Registro</label>
+            <select 
+              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3.5 text-xs font-bold shadow-sm outline-none focus:border-amber-500 transition-all"
+              value={bulkTypeFilter}
+              onChange={e => setBulkTypeFilter(e.target.value)}
+            >
+              <option value="Todos">Todos (Incidencias, Felicitaciones y Sugerencias)</option>
+              <option value="Incidencia">Solo Incidencias</option>
+              <option value="Felicitación">Solo Felicitaciones</option>
+              <option value="Sugerencia">Solo Sugerencias</option>
+            </select>
+          </div>
+        </div>
+
+        {/* ACCIÓN Y RESPUESTA DE RESOLUCIÓN MASIVA */}
+        <div className="bg-slate-900 text-white p-6 rounded-2xl mb-8 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 shadow-xl">
+          <div className="flex-1 space-y-2">
+            <label className="text-[10px] font-black text-amber-400 uppercase tracking-widest block">
+              Descargo / Comentario de Resolución Masiva
+            </label>
+            <input 
+              type="text"
+              className="w-full bg-white/10 border border-white/20 rounded-xl p-3.5 text-xs font-bold text-white placeholder-slate-400 outline-none focus:border-amber-400 transition-all"
+              placeholder="Ej: Resuelto en lote por actualización de jefatura..."
+              value={bulkResponse}
+              onChange={e => setBulkResponse(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-4">
+            <button 
+              disabled={isResolvingBulk || bulkComplaintsList.length === 0}
+              onClick={handleResolveBulk}
+              className={`w-full lg:w-auto px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl transition-all transform active:scale-95 flex items-center justify-center gap-2 ${
+                bulkComplaintsList.length === 0 || isResolvingBulk
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  : 'bg-amber-500 hover:bg-amber-600 text-slate-950 hover:shadow-amber-500/30 hover:-translate-y-0.5'
+              }`}
+            >
+              <span className="text-base">✓</span>
+              {isResolvingBulk ? 'PROCESANDO...' : `RESOLVER ${selectedIds.size > 0 ? selectedIds.size : bulkComplaintsList.length} PENDIENTES`}
+            </button>
+          </div>
+        </div>
+
+        {/* TABLA DE REGISTROS PENDIENTES Y EN PROCESO */}
+        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-inner">
+          <div className="p-4 bg-slate-100/80 border-b flex justify-between items-center text-xs font-bold">
+            <div className="flex items-center gap-3">
+              <input 
+                type="checkbox"
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                checked={bulkComplaintsList.length > 0 && selectedIds.size === bulkComplaintsList.length}
+                onChange={e => {
+                  if (e.target.checked) {
+                    setSelectedIds(new Set(bulkComplaintsList.map(c => c.id)));
+                  } else {
+                    setSelectedIds(new Set());
+                  }
+                }}
+              />
+              <span className="text-[10px] font-black uppercase text-slate-600">
+                {selectedIds.size > 0 ? `${selectedIds.size} de ${bulkComplaintsList.length} seleccionados` : 'Seleccionar Todos'}
+              </span>
+            </div>
+            <span className="text-[10px] font-black uppercase text-slate-400">
+              Mostrando {bulkComplaintsList.length} registros pendientes/en proceso
+            </span>
+          </div>
+
+          <div className="max-h-[400px] overflow-y-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-wider sticky top-0 border-b">
+                <tr>
+                  <th className="px-4 py-3 w-10 text-center">#</th>
+                  <th className="px-4 py-3">FECHA / ID</th>
+                  <th className="px-4 py-3">TIPO</th>
+                  <th className="px-4 py-3">JEFATURA / ÁREA</th>
+                  <th className="px-4 py-3">PACIENTE</th>
+                  <th className="px-4 py-3">DESCRIPCIÓN</th>
+                  <th className="px-4 py-3 text-center">ESTADO</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs font-bold">
+                {bulkComplaintsList.map(c => {
+                  const isChecked = selectedIds.has(c.id);
+                  const type = (c.complaintType || 'Incidencia');
+                  const isFelicitacion = type.toLowerCase().includes('felicitaci');
+                  const isSugerencia = type.toLowerCase().includes('sugerencia');
+
+                  return (
+                    <tr key={c.id} className={`hover:bg-amber-50/40 transition-colors ${isChecked ? 'bg-amber-50/60' : ''}`}>
+                      <td className="px-4 py-3.5 text-center">
+                        <input 
+                          type="checkbox"
+                          className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                          checked={isChecked}
+                          onChange={e => {
+                            const newSet = new Set(selectedIds);
+                            if (e.target.checked) newSet.add(c.id);
+                            else newSet.delete(c.id);
+                            setSelectedIds(newSet);
+                          }}
+                        />
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-[11px]">
+                        <span className="block font-black text-slate-800">{c.date}</span>
+                        <span className="text-[9px] text-slate-400 font-mono">#{c.id.substring(0, 8)}</span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase ${
+                          isFelicitacion ? 'bg-amber-100 text-amber-800' :
+                          isSugerencia ? 'bg-blue-100 text-blue-800' :
+                          'bg-orange-100 text-orange-800'
+                        }`}>
+                          {type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 uppercase text-slate-700">
+                        <span className="font-black block">{c.managerName || 'SIN JEFE'}</span>
+                        <span className="text-[9px] text-slate-400 block">{c.area}</span>
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-800 font-black uppercase max-w-[140px] truncate">
+                        {c.patientName}
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600 max-w-[250px] truncate text-[11px]" title={c.description}>
+                        {c.description}
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className="px-2.5 py-1 bg-amber-100 text-amber-800 font-black text-[9px] rounded-full uppercase">
+                          {c.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {bulkComplaintsList.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-slate-400 font-black uppercase text-xs">
+                      No hay incidencias, felicitaciones ni sugerencias pendientes para la jefatura y rango seleccionados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

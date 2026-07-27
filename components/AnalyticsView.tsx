@@ -32,17 +32,34 @@ export const AnalyticsView: React.FC<Props> = ({ complaints }) => {
   }, [complaints]);
 
   const managerStats = useMemo(() => {
-    const managers: Record<string, { name: string; Pendiente: number; 'En Proceso': number; Observado: number }> = {};
+    const managers: Record<string, { name: string; Pendiente: number; 'En Proceso': number; Observado: number; FelicitacionesSinLeer: number; SugerenciasPendientes: number }> = {};
     complaints.forEach(c => {
       if (!c.managerName) return;
       if (!managers[c.managerName]) {
-        managers[c.managerName] = { name: c.managerName, Pendiente: 0, 'En Proceso': 0, Observado: 0 };
+        managers[c.managerName] = { name: c.managerName, Pendiente: 0, 'En Proceso': 0, Observado: 0, FelicitacionesSinLeer: 0, SugerenciasPendientes: 0 };
       }
-      if (c.status === ComplaintStatus.PENDIENTE) managers[c.managerName].Pendiente++;
-      if (c.status === ComplaintStatus.PROCESO) managers[c.managerName]['En Proceso']++;
-      if (c.isObserved) managers[c.managerName].Observado++;
+
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      const isSugerencia = type.includes('sugerencia') || dim.includes('sugerencia');
+      const isIncidencia = !isFelicitacion && !isSugerencia;
+
+      if (isFelicitacion) {
+        if (c.status === ComplaintStatus.PENDIENTE || c.status !== ComplaintStatus.LEIDO) {
+          managers[c.managerName].FelicitacionesSinLeer++;
+        }
+      } else if (isSugerencia) {
+        if (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.status !== ComplaintStatus.RESUELTO) {
+          managers[c.managerName].SugerenciasPendientes++;
+        }
+      } else if (isIncidencia) {
+        if (c.status === ComplaintStatus.PENDIENTE) managers[c.managerName].Pendiente++;
+        if (c.status === ComplaintStatus.PROCESO) managers[c.managerName]['En Proceso']++;
+        if (c.isObserved) managers[c.managerName].Observado++;
+      }
     });
-    return Object.values(managers).sort((a, b) => (b.Pendiente + b['En Proceso'] + b.Observado) - (a.Pendiente + a['En Proceso'] + a.Observado));
+    return Object.values(managers).sort((a, b) => (b.Pendiente + b['En Proceso'] + b.Observado + b.FelicitacionesSinLeer + b.SugerenciasPendientes) - (a.Pendiente + a['En Proceso'] + a.Observado + a.FelicitacionesSinLeer + a.SugerenciasPendientes));
   }, [complaints]);
 
   const specialtyStats = useMemo(() => {
@@ -301,39 +318,41 @@ export const AnalyticsView: React.FC<Props> = ({ complaints }) => {
             <thead>
               <tr className="bg-slate-50">
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">Nombre Jefatura</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono text-center">Pendientes</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono text-center">Incidencias Pendientes</th>
+                <th className="px-6 py-4 text-[10px] font-black text-amber-600 uppercase tracking-widest font-mono text-center">Felicitaciones Sin Leer</th>
+                <th className="px-6 py-4 text-[10px] font-black text-blue-600 uppercase tracking-widest font-mono text-center">Sugerencias Pendientes</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono text-center">En Proceso</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono text-center">Observados</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono text-center">Total Casos</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono text-center">Eficiencia %</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono text-center">Total Pendientes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {managerStats.map((m, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-6 py-5 font-black text-slate-700 uppercase text-xs">{m.name}</td>
-                  <td className="px-6 py-5 text-center">
-                    <span className="bg-amber-50 text-amber-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m.Pendiente}</span>
-                  </td>
-                  <td className="px-6 py-5 text-center">
-                    <span className="bg-indigo-50 text-indigo-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m['En Proceso']}</span>
-                  </td>
-                  <td className="px-6 py-5 text-center">
-                    <span className="bg-rose-50 text-rose-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m.Observado}</span>
-                  </td>
-                  <td className="px-6 py-5 text-center font-black text-slate-900 text-sm">
-                    {m.Pendiente + m['En Proceso'] + m.Observado}
-                  </td>
-                  <td className="px-6 py-5 text-center">
-                    <div className="w-24 h-2 bg-slate-100 rounded-full mx-auto overflow-hidden">
-                       <div 
-                         className="h-full bg-emerald-500 rounded-full" 
-                         style={{ width: `${Math.min(100, Math.max(0, 100 - ((m.Pendiente + m.Observado) / (m.Pendiente + m['En Proceso'] + m.Observado) * 100)))}%` }} 
-                       />
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {managerStats.map((m, idx) => {
+                const totalPen = m.Pendiente + m['En Proceso'] + m.Observado + m.FelicitacionesSinLeer + m.SugerenciasPendientes;
+                return (
+                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="px-6 py-5 font-black text-slate-700 uppercase text-xs">{m.name}</td>
+                    <td className="px-6 py-5 text-center">
+                      <span className="bg-orange-50 text-orange-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m.Pendiente}</span>
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      <span className="bg-amber-50 text-amber-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m.FelicitacionesSinLeer}</span>
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      <span className="bg-blue-50 text-blue-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m.SugerenciasPendientes}</span>
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      <span className="bg-indigo-50 text-indigo-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m['En Proceso']}</span>
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      <span className="bg-rose-50 text-rose-600 font-mono text-[11px] font-black px-3 py-1 rounded-full">{m.Observado}</span>
+                    </td>
+                    <td className="px-6 py-5 text-center font-black text-slate-900 text-sm">
+                      <span className="bg-slate-900 text-white font-mono text-xs px-3 py-1 rounded-full">{totalPen}</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

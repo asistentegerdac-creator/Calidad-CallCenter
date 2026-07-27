@@ -257,6 +257,43 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
   }, [complaints, filterManager, filterArea, filterStatus, filterDimension, filterType, dateFrom, dateTo, currentUser]);
 
+  const managerAnalyticalStats = useMemo(() => {
+    const map: Record<string, { incidenciasPendientes: number; felicitacionesSinLeer: number; sugerenciasPendientes: number }> = {};
+
+    filtered.forEach(c => {
+      const mgr = c.managerName || 'SIN JEFE ASIGNADO';
+      if (!map[mgr]) {
+        map[mgr] = { incidenciasPendientes: 0, felicitacionesSinLeer: 0, sugerenciasPendientes: 0 };
+      }
+
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      const isSugerencia = type.includes('sugerencia') || dim.includes('sugerencia');
+      const isIncidencia = !isFelicitacion && !isSugerencia;
+
+      if (isFelicitacion) {
+        if (c.status === ComplaintStatus.PENDIENTE || c.status !== ComplaintStatus.LEIDO) {
+          map[mgr].felicitacionesSinLeer++;
+        }
+      } else if (isSugerencia) {
+        if (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.status !== ComplaintStatus.RESUELTO) {
+          map[mgr].sugerenciasPendientes++;
+        }
+      } else if (isIncidencia) {
+        if (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.isObserved) {
+          map[mgr].incidenciasPendientes++;
+        }
+      }
+    });
+
+    return Object.entries(map).map(([name, counts]) => ({
+      name,
+      ...counts,
+      totalPendientes: counts.incidenciasPendientes + counts.felicitacionesSinLeer + counts.sugerenciasPendientes,
+    })).sort((a, b) => b.totalPendientes - a.totalPendientes);
+  }, [filtered]);
+
   const groupedByManager = useMemo(() => {
     const groups: Record<string, Complaint[]> = {};
     filtered.forEach(c => {
@@ -469,9 +506,9 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
     };
 
-    // 1. Resumen de Jefaturas (To keep what user asked "dejalo como esta")
+    // 1. Resumen de Jefaturas
     worksheet.addRow(['RESUMEN DE GESTIÓN POR JEFATURA']).font = { bold: true, size: 14, color: { argb: 'FF1E1B4B' } };
-    const summaryHeader = worksheet.addRow(['JEFATURA', 'CANTIDAD DE CASOS']);
+    const summaryHeader = worksheet.addRow(['JEFATURA', 'INCIDENCIAS PENDIENTES', 'FELICITACIONES SIN LEER', 'SUGERENCIAS PENDIENTES', 'TOTAL PENDIENTES']);
     summaryHeader.eachCell(c => { 
       c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; 
       c.fill = headerFill;
@@ -482,22 +519,38 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       const cDate = c.date.trim().substring(0, 10);
       const fromDate = from.trim().substring(0, 10);
       const toDate = to.trim().substring(0, 10);
-      return (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO) && 
-             cDate >= fromDate && cDate <= toDate;
+      return cDate >= fromDate && cDate <= toDate;
     });
 
-    const grouped: Record<string, number> = {};
+    const grouped: Record<string, { incidencias: number; felicitaciones: number; sugerencias: number }> = {};
     pendingItems.forEach(c => {
       const mgr = c.managerName || 'SIN JEFE ASIGNADO';
-      grouped[mgr] = (grouped[mgr] || 0) + 1;
+      if (!grouped[mgr]) grouped[mgr] = { incidencias: 0, felicitaciones: 0, sugerencias: 0 };
+
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      const isSugerencia = type.includes('sugerencia') || dim.includes('sugerencia');
+      const isIncidencia = !isFelicitacion && !isSugerencia;
+
+      if (isFelicitacion && (c.status === ComplaintStatus.PENDIENTE || c.status !== ComplaintStatus.LEIDO)) {
+        grouped[mgr].felicitaciones++;
+      } else if (isSugerencia && (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.status !== ComplaintStatus.RESUELTO)) {
+        grouped[mgr].sugerencias++;
+      } else if (isIncidencia && (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.isObserved)) {
+        grouped[mgr].incidencias++;
+      }
     });
 
-    Object.entries(grouped).forEach(([mgr, count]) => {
-      const row = worksheet.addRow([mgr, count]);
-      row.eachCell(c => {
-        c.border = borderStyle;
-        c.font = fontStandard;
-      });
+    Object.entries(grouped).forEach(([mgr, counts]) => {
+      const total = counts.incidencias + counts.felicitaciones + counts.sugerencias;
+      if (total > 0) {
+        const row = worksheet.addRow([mgr, counts.incidencias, counts.felicitaciones, counts.sugerencias, total]);
+        row.eachCell(c => {
+          c.border = borderStyle;
+          c.font = fontStandard;
+        });
+      }
     });
 
     worksheet.addRow([]);
@@ -802,21 +855,37 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
     // 1. Resumen
     worksheet.addRow(['RESUMEN DE GESTIÓN (TODOS)']).font = { bold: true, size: 14, color: { argb: 'FF1E1B4B' } };
-    const summaryHeader = worksheet.addRow(['JEFATURA', 'CANTIDAD INCIDENCIAS']);
+    const summaryHeader = worksheet.addRow(['JEFATURA', 'INCIDENCIAS PENDIENTES', 'FELICITACIONES SIN LEER', 'SUGERENCIAS PENDIENTES', 'TOTAL PENDIENTES', 'TOTAL GENERAL']);
     summaryHeader.eachCell(c => { 
       c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; 
       c.fill = headerFill;
       c.border = borderStyle;
     });
 
-    const grouped: Record<string, number> = {};
+    const grouped: Record<string, { total: number; incidenciasPen: number; felicitacionesUnread: number; sugerenciasPen: number }> = {};
     allItems.forEach(c => {
       const mgr = c.managerName || 'SIN JEFE ASIGNADO';
-      grouped[mgr] = (grouped[mgr] || 0) + 1;
+      if (!grouped[mgr]) grouped[mgr] = { total: 0, incidenciasPen: 0, felicitacionesUnread: 0, sugerenciasPen: 0 };
+      grouped[mgr].total++;
+
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      const isSugerencia = type.includes('sugerencia') || dim.includes('sugerencia');
+      const isIncidencia = !isFelicitacion && !isSugerencia;
+
+      if (isFelicitacion && (c.status === ComplaintStatus.PENDIENTE || c.status !== ComplaintStatus.LEIDO)) {
+        grouped[mgr].felicitacionesUnread++;
+      } else if (isSugerencia && (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.status !== ComplaintStatus.RESUELTO)) {
+        grouped[mgr].sugerenciasPen++;
+      } else if (isIncidencia && (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.isObserved)) {
+        grouped[mgr].incidenciasPen++;
+      }
     });
 
-    Object.entries(grouped).forEach(([mgr, count]) => {
-      const row = worksheet.addRow([mgr, count]);
+    Object.entries(grouped).forEach(([mgr, data]) => {
+      const pendingTotal = data.incidenciasPen + data.felicitacionesUnread + data.sugerenciasPen;
+      const row = worksheet.addRow([mgr, data.incidenciasPen, data.felicitacionesUnread, data.sugerenciasPen, pendingTotal, data.total]);
       row.eachCell(c => {
         c.border = borderStyle;
         c.font = fontStandard;
@@ -1016,6 +1085,69 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
       </div>
 
       <div className="space-y-10 no-print">
+        {/* DETALLE ANALÍTICO DE GESTIÓN POR JEFATURA */}
+        <div className="glass-card bg-white p-6 md:p-8 border border-slate-100 shadow-xl rounded-[2.5rem] overflow-hidden">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+            <div>
+              <h4 className="font-black text-indigo-900 text-sm md:text-base uppercase tracking-tight flex items-center gap-2">
+                <span className="w-2 h-5 bg-indigo-600 rounded-full"></span>
+                DETALLE ANALÍTICO DE GESTIÓN POR JEFATURA
+              </h4>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                Resumen de Incidencias, Felicitaciones sin leer y Sugerencias pendientes
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest font-mono border-b border-slate-100">
+                  <th className="px-6 py-4">JEFATURA</th>
+                  <th className="px-6 py-4 text-center">INCIDENCIAS PENDIENTES</th>
+                  <th className="px-6 py-4 text-center text-amber-600">FELICITACIONES SIN LEER</th>
+                  <th className="px-6 py-4 text-center text-blue-600">SUGERENCIAS PENDIENTES</th>
+                  <th className="px-6 py-4 text-center font-black text-slate-900">TOTAL PENDIENTES</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs font-bold">
+                {managerAnalyticalStats.map((stat) => (
+                  <tr key={stat.name} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 font-black text-slate-800 uppercase">{stat.name}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="bg-orange-50 text-orange-600 font-mono text-[11px] px-3 py-1 rounded-full font-black">
+                        {stat.incidenciasPendientes}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="bg-amber-50 text-amber-600 font-mono text-[11px] px-3 py-1 rounded-full font-black">
+                        {stat.felicitacionesSinLeer}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="bg-blue-50 text-blue-600 font-mono text-[11px] px-3 py-1 rounded-full font-black">
+                        {stat.sugerenciasPendientes}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center font-mono font-black text-slate-900">
+                      <span className="bg-indigo-900 text-white px-3.5 py-1 rounded-full text-xs">
+                        {stat.totalPendientes}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {managerAnalyticalStats.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-center py-6 text-slate-400 font-black uppercase text-[10px]">
+                      Sin datos analíticos para los filtros seleccionados
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         {(Object.entries(groupedByManager) as [string, Complaint[]][]).map(([manager, items]) => (
           <div key={manager} className="glass-card bg-white p-6 md:p-8 border border-slate-100 shadow-md overflow-hidden">
             <h4 className="font-black text-indigo-900 text-sm uppercase mb-6 flex items-center gap-2">
