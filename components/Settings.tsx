@@ -56,24 +56,64 @@ export const Settings: React.FC<Props> = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isResolvingBulk, setIsResolvingBulk] = useState(false);
 
+  // Guardado seguro en localStorage para evitar errores de QuotaExceeded
+  const safeSaveLocalComplaints = (data: Complaint[]) => {
+    try {
+      localStorage.setItem('dac_complaints', JSON.stringify(data));
+    } catch (e) {
+      console.warn("Storage quota limit reached for localStorage:", e);
+      try {
+        const sanitized = data.map(c => ({
+          ...c,
+          evidenceImages: (c.evidenceImages || []).map(img => img.length > 500 ? '[imagen_local]' : img)
+        }));
+        localStorage.setItem('dac_complaints', JSON.stringify(sanitized));
+      } catch {}
+    }
+  };
+
+  // Solo mostrar nombres de Jefaturas con áreas a cargo en el organigrama
   const managerOptions = useMemo(() => {
     const set = new Set<string>();
-    users.forEach(u => { if (u.name) set.add(u.name); });
-    areaMappings.forEach(m => { if (m.managerName) set.add(m.managerName); });
-    complaints.forEach(c => { if (c.managerName) set.add(c.managerName); });
+    areaMappings.forEach(m => {
+      if (m.managerName && m.managerName.trim()) {
+        set.add(m.managerName.trim());
+      }
+    });
+    // Fallback únicamente si el organigrama no tiene jefaturas asignadas aún
+    if (set.size === 0) {
+      complaints.forEach(c => {
+        if (c.managerName && c.managerName.trim()) {
+          set.add(c.managerName.trim());
+        }
+      });
+    }
     return Array.from(set).sort();
-  }, [users, areaMappings, complaints]);
+  }, [areaMappings, complaints]);
 
+  // Mostrar únicamente registros pendientes, en proceso u observados (los cerrados / resueltos / leídos NO se muestran)
   const bulkComplaintsList = useMemo(() => {
     return complaints.filter(c => {
+      // 1. Excluir explícitamente registros cerrados / resueltos / leídos
+      if (
+        c.status === ComplaintStatus.RESUELTO ||
+        c.status === ComplaintStatus.LEIDO ||
+        c.status === ComplaintStatus.CERRADO
+      ) {
+        return false;
+      }
+
+      // 2. Filtro por Jefatura
       if (bulkManager && bulkManager !== 'Todas') {
         if (c.managerName !== bulkManager) return false;
       }
 
+      // 3. Filtro por Rango de Fechas
       const cDate = (c.date || '').trim().substring(0, 10);
       if (bulkDateFrom && cDate < bulkDateFrom) return false;
       if (bulkDateTo && cDate > bulkDateTo) return false;
 
+      // 4. Filtro por Tipo de Registro (Incidencia, Felicitación, Sugerencia)
       const type = (c.complaintType || '').toLowerCase();
       const dim = (c.dimension || '').toLowerCase();
       const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
@@ -84,13 +124,8 @@ export const Settings: React.FC<Props> = ({
       if (bulkTypeFilter === 'Felicitación' && !isFelicitacion) return false;
       if (bulkTypeFilter === 'Sugerencia' && !isSugerencia) return false;
 
-      if (isFelicitacion) {
-        return c.status === ComplaintStatus.PENDIENTE || c.status !== ComplaintStatus.LEIDO;
-      }
-      if (isSugerencia) {
-        return c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.status !== ComplaintStatus.RESUELTO;
-      }
-      return c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO || c.isObserved || c.status !== ComplaintStatus.RESUELTO;
+      // Un registro no resuelto ni leído se considera pendiente / en proceso / observado
+      return true;
     });
   }, [complaints, bulkManager, bulkDateFrom, bulkDateTo, bulkTypeFilter]);
 
@@ -118,10 +153,11 @@ export const Settings: React.FC<Props> = ({
     try {
       const timestamp = getCurrentTimeInTimezone(timezone);
       const resolvedByName = currentUser?.name || 'Administrador';
+      const itemsToResolveIds = new Set(itemsToResolve.map(x => x.id));
+      const savePromises: Promise<any>[] = [];
 
       const updatedComplaints = complaints.map(c => {
-        const match = itemsToResolve.find(item => item.id === c.id);
-        if (!match) return c;
+        if (!itemsToResolveIds.has(c.id)) return c;
 
         const type = (c.complaintType || '').toLowerCase();
         const dim = (c.dimension || '').toLowerCase();
@@ -149,19 +185,28 @@ export const Settings: React.FC<Props> = ({
         };
 
         if (isOnline) {
-          dbService.saveComplaint(updatedItem);
+          savePromises.push(
+            dbService.saveComplaint(updatedItem).catch(err => {
+              console.warn("Error guardando elemento en nodo:", c.id, err);
+            })
+          );
         }
 
         return updatedItem;
       });
 
+      if (isOnline && savePromises.length > 0) {
+        await Promise.all(savePromises);
+      }
+
       setComplaints(updatedComplaints);
-      localStorage.setItem('dac_complaints', JSON.stringify(updatedComplaints));
+      safeSaveLocalComplaints(updatedComplaints);
       setSelectedIds(new Set());
+      setBulkResponse('');
       alert(`✅ Se han resuelto masivamente ${itemsToResolve.length} registros con éxito.`);
     } catch (err) {
       console.error("Error en resolución masiva:", err);
-      alert("Error al procesar la resolución masiva.");
+      alert("Ocurrió un inconveniente al procesar la resolución masiva.");
     } finally {
       setIsResolvingBulk(false);
     }
