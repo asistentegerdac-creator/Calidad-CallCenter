@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
-import { Complaint, ComplaintStatus, ComplaintType, User } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Complaint, ComplaintStatus, ComplaintType, User, AreaMapping } from '../types';
 import { getCurrentTimeInTimezone } from '../src/utils/timeUtils';
+import { dbService } from '../services/apiService';
 
 interface Props {
   complaints: Complaint[];
@@ -25,6 +26,40 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
   const [reason, setReason] = useState('');
   const [implementationDetail, setImplementationDetail] = useState('');
   const [referredArea, setReferredArea] = useState('');
+  const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
+
+  useEffect(() => {
+    dbService.fetchAreasConfig().then(mappings => {
+      if (mappings && Array.isArray(mappings)) {
+        setAreaMappings(mappings);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const managerOptions = useMemo(() => {
+    const auditorNames = new Set(
+      users.filter(u => u.role === 'auditor').map(u => u.name.trim().toLowerCase())
+    );
+
+    const set = new Set<string>();
+    areaMappings.forEach(m => {
+      const mgr = (m.managerName || '').trim();
+      const area = (m.areaName || '').trim();
+      if (mgr && area && !auditorNames.has(mgr.toLowerCase())) {
+        set.add(mgr);
+      }
+    });
+
+    if (set.size === 0) {
+      users.forEach(u => {
+        if (u.role !== 'auditor' && u.name) {
+          set.add(u.name.trim());
+        }
+      });
+    }
+
+    return Array.from(set).sort();
+  }, [users, areaMappings]);
 
   const filtered = useMemo(() => {
     return complaints.filter(c => {
@@ -114,7 +149,7 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
               onChange={e => setFilterManager(e.target.value)}
             >
               <option value="Todas">Todas</option>
-              {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+              {managerOptions.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
 

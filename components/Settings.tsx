@@ -72,24 +72,32 @@ export const Settings: React.FC<Props> = ({
     }
   };
 
-  // Solo mostrar nombres de Jefaturas con áreas a cargo en el organigrama
+  // Solo mostrar nombres de Jefaturas con áreas a cargo en el organigrama, excluyendo a auditores
   const managerOptions = useMemo(() => {
+    const auditorNames = new Set(
+      users.filter(u => u.role === 'auditor').map(u => u.name.trim().toLowerCase())
+    );
+
     const set = new Set<string>();
     areaMappings.forEach(m => {
-      if (m.managerName && m.managerName.trim()) {
-        set.add(m.managerName.trim());
+      const mgr = (m.managerName || '').trim();
+      const area = (m.areaName || '').trim();
+      if (mgr && area && !auditorNames.has(mgr.toLowerCase())) {
+        set.add(mgr);
       }
     });
+
     // Fallback únicamente si el organigrama no tiene jefaturas asignadas aún
     if (set.size === 0) {
-      complaints.forEach(c => {
-        if (c.managerName && c.managerName.trim()) {
-          set.add(c.managerName.trim());
+      users.forEach(u => {
+        if (u.role !== 'auditor' && u.name) {
+          set.add(u.name.trim());
         }
       });
     }
+
     return Array.from(set).sort();
-  }, [areaMappings, complaints]);
+  }, [users, areaMappings]);
 
   // Mostrar únicamente registros pendientes, en proceso u observados (los cerrados / resueltos / leídos NO se muestran)
   const bulkComplaintsList = useMemo(() => {
