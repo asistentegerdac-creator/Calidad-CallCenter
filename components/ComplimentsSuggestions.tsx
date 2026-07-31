@@ -136,80 +136,144 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
 
   const handleExportExcel = async () => {
     const workbook = new ExcelJS.Workbook();
-    const sheetName = activeTab === ComplaintType.FELICITACION ? 'Reporte de Felicitaciones' : 'Reporte de Sugerencias';
+    const sheetName = activeTab === ComplaintType.FELICITACION ? 'Informe Felicitaciones' : 'Informe Sugerencias';
     const worksheet = workbook.addWorksheet(sheetName);
 
-    const headerFill: ExcelJS.Fill = {
+    // Color Palette (Forest Green Executive Theme)
+    const forestGreenHeader: ExcelJS.Fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF1E1B4B' } // Indigo 950
+      fgColor: { argb: 'FF1E5128' } // Deep forest green
     };
 
-    const sectionFill: ExcelJS.Fill = {
+    const mintSectionFill: ExcelJS.Fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFF1F5F9' } // Slate 100
+      fgColor: { argb: 'FFE8F5E9' } // Light mint green
     };
 
-    const fontWhite: Partial<ExcelJS.Font> = {
+    const kpiCardFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF4F9F4' } // Very light green tint
+    };
+
+    const fontWhiteBold: Partial<ExcelJS.Font> = {
       color: { argb: 'FFFFFFFF' },
       bold: true,
-      name: 'Plus Jakarta Sans',
+      name: 'Segoe UI',
       size: 11
     };
 
-    const fontSection: Partial<ExcelJS.Font> = {
-      color: { argb: 'FF1E1B4B' },
+    const fontTitle: Partial<ExcelJS.Font> = {
+      color: { argb: 'FF1E5128' },
       bold: true,
-      name: 'Plus Jakarta Sans',
+      name: 'Segoe UI',
+      size: 16
+    };
+
+    const fontSection: Partial<ExcelJS.Font> = {
+      color: { argb: 'FF1B4332' },
+      bold: true,
+      name: 'Segoe UI',
       size: 11
     };
 
     const fontStandard: Partial<ExcelJS.Font> = {
-      name: 'Plus Jakarta Sans',
+      name: 'Segoe UI',
       size: 10
     };
 
     const borderStyle: any = {
-      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-      bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-      right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+      top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+      left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+      bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+      right: { style: 'thin', color: { argb: 'FFD1D5DB' } }
     };
 
-    // 1. Título e Información General
-    const mainTitle = activeTab === ComplaintType.FELICITACION ? 'INFORME TRIMESTRAL DE ANÁLISIS DE FELICITACIONES' : 'INFORME TRIMESTRAL DE ANÁLISIS DE SUGERENCIAS';
-    const titleRow = worksheet.addRow([mainTitle]);
-    titleRow.font = { bold: true, size: 14, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
-    worksheet.addRow([`Fecha de generación: ${new Date().toLocaleDateString()} | Jefatura: ${filterManager} | Área: ${filterArea} | Estado: ${filterStatus}`]);
+    // 1. Executive Banner Title
+    const titleText = activeTab === ComplaintType.FELICITACION 
+      ? 'REPORTE DE FELICITACIONES POR ÁREA' 
+      : 'REPORTE DE SUGERENCIAS POR ÁREA';
+    
+    const titleRow = worksheet.addRow([titleText]);
+    titleRow.font = fontTitle;
+    worksheet.mergeCells(`A1:F1`);
+    titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    const subtitleRow = worksheet.addRow([`Fecha de generación: ${new Date().toLocaleDateString()} | Jefatura: ${filterManager} | Área: ${filterArea} | Estado: ${filterStatus}`]);
+    subtitleRow.font = { italic: true, size: 10, color: { argb: 'FF4B5563' }, name: 'Segoe UI' };
+    worksheet.mergeCells(`A2:F2`);
+    subtitleRow.alignment = { horizontal: 'center', vertical: 'middle' };
     worksheet.addRow([]);
 
-    // 2. Tabla Resumen / Matriz por Jefatura
-    worksheet.addRow(['RESUMEN GENERAL POR JEFATURA']).font = { bold: true, size: 12, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
-    const summaryHeader = worksheet.addRow(['JEFATURA', 'PENDIENTES', 'ATENDIDAS / LEÍDAS', 'TOTAL REGISTROS']);
-    summaryHeader.eachCell(c => {
-      c.font = fontWhite;
-      c.fill = headerFill;
+    // Enable outline grouping tree view
+    worksheet.properties = { outlineProperties: { summaryBelow: false } } as any;
+
+    // 2. Dashboard KPI Summary Cards
+    const totalRecords = filtered.length;
+    const summaryData: Record<string, { pending: number; resolved: number; total: number }> = {};
+    const areaCounts: Record<string, number> = {};
+
+    filtered.forEach(c => {
+      const mgr = (c.managerName || 'SIN JEFATURA').trim().toUpperCase();
+      if (!summaryData[mgr]) summaryData[mgr] = { pending: 0, resolved: 0, total: 0 };
+      
+      const isPending = c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO;
+      if (isPending) summaryData[mgr].pending++;
+      else summaryData[mgr].resolved++;
+      summaryData[mgr].total++;
+
+      const area = (c.area || 'GENERAL').trim().toUpperCase();
+      areaCounts[area] = (areaCounts[area] || 0) + 1;
+    });
+
+    let topManager = 'N/A';
+    let maxMgrCount = -1;
+    Object.entries(summaryData).forEach(([mgr, data]) => {
+      if (data.total > maxMgrCount) {
+        maxMgrCount = data.total;
+        topManager = mgr;
+      }
+    });
+
+    let topArea = 'N/A';
+    let maxAreaCount = -1;
+    Object.entries(areaCounts).forEach(([area, count]) => {
+      if (count > maxAreaCount) {
+        maxAreaCount = count;
+        topArea = area;
+      }
+    });
+
+    const kpiHeader = worksheet.addRow(['RESUMEN EJECUTIVO (KPIs)']);
+    kpiHeader.font = { bold: true, size: 12, color: { argb: 'FF1E5128' }, name: 'Segoe UI' };
+    
+    const kpiRow1 = worksheet.addRow(['TOTAL REGISTROS', totalRecords, 'JEFATURA LÍDER', topManager, 'ÁREA DESTACADA', topArea]);
+    kpiRow1.eachCell(c => {
+      c.fill = kpiCardFill;
+      c.border = borderStyle;
+      c.font = fontStandard;
+    });
+
+    worksheet.addRow([]);
+    worksheet.addRow([]);
+
+    // 3. Resumen por Jefatura (Matriz de Rendimiento)
+    const matHeader = worksheet.addRow(['MATRIZ DE RENDIMIENTO POR JEFATURA']);
+    matHeader.font = { bold: true, size: 12, color: { argb: 'FF1E5128' }, name: 'Segoe UI' };
+
+    const matrixHeaderRow = worksheet.addRow(['JEFATURA', 'PENDIENTES', 'ATENDIDAS / LEÍDAS', 'TOTAL GENERAL', '% PARTICIPACIÓN']);
+    matrixHeaderRow.eachCell(c => {
+      c.font = fontWhiteBold;
+      c.fill = forestGreenHeader;
       c.border = borderStyle;
       c.alignment = { vertical: 'middle', horizontal: 'center' };
     });
 
-    const summaryData: Record<string, { pending: number; resolved: number; total: number }> = {};
-    filtered.forEach(c => {
-      const mgr = (c.managerName || 'SIN JEFATURA ASIGNADA').trim().toUpperCase();
-      if (!summaryData[mgr]) summaryData[mgr] = { pending: 0, resolved: 0, total: 0 };
-      
-      const isPending = c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO;
-      if (isPending) {
-        summaryData[mgr].pending++;
-      } else {
-        summaryData[mgr].resolved++;
-      }
-      summaryData[mgr].total++;
-    });
-
     Object.entries(summaryData).forEach(([mgr, counts]) => {
-      const row = worksheet.addRow([mgr, counts.pending, counts.resolved, counts.total]);
+      const pct = totalRecords > 0 ? `${((counts.total / totalRecords) * 100).toFixed(1)}%` : '0%';
+      const row = worksheet.addRow([mgr, counts.pending, counts.resolved, counts.total, pct]);
       row.eachCell(c => {
         c.border = borderStyle;
         c.font = fontStandard;
@@ -219,8 +283,9 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
     worksheet.addRow([]);
     worksheet.addRow([]);
 
-    // 3. Detalle por Jefaturas
-    worksheet.addRow(['DETALLE DE REGISTROS POR JEFATURA Y ÁREA']).font = { bold: true, size: 12, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
+    // 4. Detalle Completo Organizado por Jefatura, Subgrupos Médicos y Áreas (con esquema de agrupación jerárquica)
+    const detHeader = worksheet.addRow(['DETALLE ANALÍTICO Y AGRUPAMIENTO POR JEFATURAS']);
+    detHeader.font = { bold: true, size: 12, color: { argb: 'FF1E5128' }, name: 'Segoe UI' };
     worksheet.addRow([]);
 
     const byManager: Record<string, Complaint[]> = {};
@@ -231,13 +296,14 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
     });
 
     Object.entries(byManager).forEach(([mgrName, items]) => {
-      const mgrRow = worksheet.addRow([`JEFATURA: ${mgrName} (Total: ${items.length})`]);
+      const mgrRow = worksheet.addRow([`JEFATURA: ${mgrName} (Total Registros: ${items.length})`]);
       mgrRow.eachCell(cell => {
-        cell.fill = sectionFill;
+        cell.fill = mintSectionFill;
         cell.font = fontSection;
         cell.border = borderStyle;
       });
       worksheet.mergeCells(`A${mgrRow.number}:F${mgrRow.number}`);
+      mgrRow.outlineLevel = 0;
 
       const medicalItems = items.filter(i => {
         const areaLower = (i.area || '').toLowerCase();
@@ -250,15 +316,17 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
 
       if (activeTab === ComplaintType.FELICITACION) {
         if (medicalItems.length > 0) {
-          const subTitle1 = worksheet.addRow(['ÁREA MÉDICA / CONSULTAS (Agrupado por Médico)']);
-          subTitle1.font = { bold: true, size: 10, color: { argb: 'FF475569' }, name: 'Plus Jakarta Sans' };
+          const subTitle1 = worksheet.addRow(['ÁREA MÉDICA / CONSULTAS (Agrupado por Médico - Expandible)']);
+          subTitle1.font = { bold: true, size: 10, color: { argb: 'FF2C6B37' }, name: 'Segoe UI' };
+          subTitle1.outlineLevel = 0;
 
-          const medHeader = worksheet.addRow(['MÉDICO', 'CANTIDAD DE FELICITACIONES', 'PACIENTES / DETALLES']);
+          const medHeader = worksheet.addRow(['MÉDICO / ESPECIALISTA', 'CANTIDAD', 'PACIENTE', 'MENSAJE / OBSERVACIÓN', 'FECHA']);
           medHeader.eachCell(c => {
-            c.font = fontWhite;
-            c.fill = headerFill;
+            c.font = fontWhiteBold;
+            c.fill = forestGreenHeader;
             c.border = borderStyle;
           });
+          medHeader.outlineLevel = 0;
 
           const byDoctor: Record<string, Complaint[]> = {};
           medicalItems.forEach(item => {
@@ -268,32 +336,52 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
           });
 
           Object.entries(byDoctor).forEach(([docName, docComplaints]) => {
-            const patientsList = docComplaints.map(d => `${d.patientName || 'Anónimo'} (${d.date})`).join('; ');
-            const row = worksheet.addRow([docName, docComplaints.length, patientsList]);
-            row.eachCell(c => {
+            // Doctor Group Header Row (outlineLevel 0)
+            const docRow = worksheet.addRow([docName, docComplaints.length, 'Total Felicitaciones de Médico', '', '']);
+            docRow.eachCell(c => {
               c.border = borderStyle;
-              c.font = fontStandard;
+              c.font = { bold: true, color: { argb: 'FF1E5128' }, name: 'Segoe UI', size: 10 };
+              c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+            });
+            docRow.outlineLevel = 0;
+
+            // Compliments under this doctor (outlineLevel 1 - expandable/collapsible)
+            docComplaints.forEach(dc => {
+              const detailRow = worksheet.addRow([
+                '', 
+                '', 
+                (dc.patientName || 'ANÓNIMO').toUpperCase(), 
+                dc.description || 'Sin mensaje', 
+                dc.date
+              ]);
+              detailRow.eachCell(c => {
+                c.border = borderStyle;
+                c.font = fontStandard;
+              });
+              detailRow.outlineLevel = 1;
             });
           });
           worksheet.addRow([]);
         }
 
         if (otherItems.length > 0) {
-          const subTitle2 = worksheet.addRow(['OTRAS ÁREAS (Listado Detallado)']);
-          subTitle2.font = { bold: true, size: 10, color: { argb: 'FF475569' }, name: 'Plus Jakarta Sans' };
+          const subTitle2 = worksheet.addRow(['OTRAS ÁREAS (Listado por Área sin Agrupamiento Médico)']);
+          subTitle2.font = { bold: true, size: 10, color: { argb: 'FF2C6B37' }, name: 'Segoe UI' };
+          subTitle2.outlineLevel = 0;
 
-          const otherHeader = worksheet.addRow(['FECHA', 'PACIENTE', 'ÁREA', 'RECONOCIMIENTO / DETALLE', 'ESTADO']);
+          const otherHeader = worksheet.addRow(['ÁREA', 'FECHA', 'PACIENTE', 'DETALLE / RECONOCIMIENTO', 'ESTADO']);
           otherHeader.eachCell(c => {
-            c.font = fontWhite;
-            c.fill = headerFill;
+            c.font = fontWhiteBold;
+            c.fill = forestGreenHeader;
             c.border = borderStyle;
           });
+          otherHeader.outlineLevel = 0;
 
           otherItems.forEach(item => {
             const row = worksheet.addRow([
+              item.area || 'GENERAL',
               item.date,
               (item.patientName || 'ANÓNIMO').toUpperCase(),
-              item.area,
               item.description,
               item.status.toUpperCase()
             ]);
@@ -301,16 +389,18 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
               c.border = borderStyle;
               c.font = fontStandard;
             });
+            row.outlineLevel = 0;
           });
           worksheet.addRow([]);
         }
       } else {
         const sugHeader = worksheet.addRow(['FECHA', 'PACIENTE', 'ÁREA', 'SUGERENCIA', 'ESTADO', 'APLICABLE']);
         sugHeader.eachCell(c => {
-          c.font = fontWhite;
-          c.fill = headerFill;
+          c.font = fontWhiteBold;
+          c.fill = forestGreenHeader;
           c.border = borderStyle;
         });
+        sugHeader.outlineLevel = 0;
 
         items.forEach(item => {
           const row = worksheet.addRow([
@@ -325,6 +415,7 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
             c.border = borderStyle;
             c.font = fontStandard;
           });
+          row.outlineLevel = 0;
         });
         worksheet.addRow([]);
       }
@@ -334,16 +425,16 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
 
     worksheet.columns = [
       { width: 35 },
-      { width: 30 },
+      { width: 28 },
       { width: 35 },
-      { width: 65 },
-      { width: 22 },
-      { width: 22 }
+      { width: 60 },
+      { width: 20 },
+      { width: 20 }
     ];
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const fileName = activeTab === ComplaintType.FELICITACION ? `Reporte_Felicitaciones_${new Date().toISOString().split('T')[0]}.xlsx` : `Reporte_Sugerencias_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = activeTab === ComplaintType.FELICITACION ? `Dashboard_Felicitaciones_${new Date().toISOString().split('T')[0]}.xlsx` : `Dashboard_Sugerencias_${new Date().toISOString().split('T')[0]}.xlsx`;
     saveAs(blob, fileName);
   };
 
