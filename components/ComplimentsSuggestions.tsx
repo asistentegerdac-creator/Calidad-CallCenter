@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Complaint, ComplaintStatus, ComplaintType, User, AreaMapping } from '../types';
 import { getCurrentTimeInTimezone } from '../src/utils/timeUtils';
 import { dbService } from '../services/apiService';
+import * as ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 interface Props {
   complaints: Complaint[];
@@ -132,6 +134,219 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
     }
   };
 
+  const handleExportExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheetName = activeTab === ComplaintType.FELICITACION ? 'Reporte de Felicitaciones' : 'Reporte de Sugerencias';
+    const worksheet = workbook.addWorksheet(sheetName);
+
+    const headerFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1E1B4B' } // Indigo 950
+    };
+
+    const sectionFill: ExcelJS.Fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF1F5F9' } // Slate 100
+    };
+
+    const fontWhite: Partial<ExcelJS.Font> = {
+      color: { argb: 'FFFFFFFF' },
+      bold: true,
+      name: 'Plus Jakarta Sans',
+      size: 11
+    };
+
+    const fontSection: Partial<ExcelJS.Font> = {
+      color: { argb: 'FF1E1B4B' },
+      bold: true,
+      name: 'Plus Jakarta Sans',
+      size: 11
+    };
+
+    const fontStandard: Partial<ExcelJS.Font> = {
+      name: 'Plus Jakarta Sans',
+      size: 10
+    };
+
+    const borderStyle: any = {
+      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+    };
+
+    // 1. Título e Información General
+    const mainTitle = activeTab === ComplaintType.FELICITACION ? 'INFORME TRIMESTRAL DE ANÁLISIS DE FELICITACIONES' : 'INFORME TRIMESTRAL DE ANÁLISIS DE SUGERENCIAS';
+    const titleRow = worksheet.addRow([mainTitle]);
+    titleRow.font = { bold: true, size: 14, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
+    worksheet.addRow([`Fecha de generación: ${new Date().toLocaleDateString()} | Jefatura: ${filterManager} | Área: ${filterArea} | Estado: ${filterStatus}`]);
+    worksheet.addRow([]);
+
+    // 2. Tabla Resumen / Matriz por Jefatura
+    worksheet.addRow(['RESUMEN GENERAL POR JEFATURA']).font = { bold: true, size: 12, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
+    const summaryHeader = worksheet.addRow(['JEFATURA', 'PENDIENTES', 'ATENDIDAS / LEÍDAS', 'TOTAL REGISTROS']);
+    summaryHeader.eachCell(c => {
+      c.font = fontWhite;
+      c.fill = headerFill;
+      c.border = borderStyle;
+      c.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    const summaryData: Record<string, { pending: number; resolved: number; total: number }> = {};
+    filtered.forEach(c => {
+      const mgr = (c.managerName || 'SIN JEFATURA ASIGNADA').trim().toUpperCase();
+      if (!summaryData[mgr]) summaryData[mgr] = { pending: 0, resolved: 0, total: 0 };
+      
+      const isPending = c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO;
+      if (isPending) {
+        summaryData[mgr].pending++;
+      } else {
+        summaryData[mgr].resolved++;
+      }
+      summaryData[mgr].total++;
+    });
+
+    Object.entries(summaryData).forEach(([mgr, counts]) => {
+      const row = worksheet.addRow([mgr, counts.pending, counts.resolved, counts.total]);
+      row.eachCell(c => {
+        c.border = borderStyle;
+        c.font = fontStandard;
+      });
+    });
+
+    worksheet.addRow([]);
+    worksheet.addRow([]);
+
+    // 3. Detalle por Jefaturas
+    worksheet.addRow(['DETALLE DE REGISTROS POR JEFATURA Y ÁREA']).font = { bold: true, size: 12, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
+    worksheet.addRow([]);
+
+    const byManager: Record<string, Complaint[]> = {};
+    filtered.forEach(c => {
+      const mgr = (c.managerName || 'SIN JEFATURA ASIGNADA').trim().toUpperCase();
+      if (!byManager[mgr]) byManager[mgr] = [];
+      byManager[mgr].push(c);
+    });
+
+    Object.entries(byManager).forEach(([mgrName, items]) => {
+      const mgrRow = worksheet.addRow([`JEFATURA: ${mgrName} (Total: ${items.length})`]);
+      mgrRow.eachCell(cell => {
+        cell.fill = sectionFill;
+        cell.font = fontSection;
+        cell.border = borderStyle;
+      });
+      worksheet.mergeCells(`A${mgrRow.number}:F${mgrRow.number}`);
+
+      const medicalItems = items.filter(i => {
+        const areaLower = (i.area || '').toLowerCase();
+        const dimLower = (i.dimension || '').toLowerCase();
+        const specLower = (i.specialty || '').toLowerCase();
+        return areaLower.includes('medica') || areaLower.includes('consulta') || areaLower.includes('medicina') || specLower.length > 0 || (i.doctorName && i.doctorName.trim() !== '' && i.doctorName !== 'N/A');
+      });
+
+      const otherItems = items.filter(i => !medicalItems.includes(i));
+
+      if (activeTab === ComplaintType.FELICITACION) {
+        if (medicalItems.length > 0) {
+          const subTitle1 = worksheet.addRow(['ÁREA MÉDICA / CONSULTAS (Agrupado por Médico)']);
+          subTitle1.font = { bold: true, size: 10, color: { argb: 'FF475569' }, name: 'Plus Jakarta Sans' };
+
+          const medHeader = worksheet.addRow(['MÉDICO', 'CANTIDAD DE FELICITACIONES', 'PACIENTES / DETALLES']);
+          medHeader.eachCell(c => {
+            c.font = fontWhite;
+            c.fill = headerFill;
+            c.border = borderStyle;
+          });
+
+          const byDoctor: Record<string, Complaint[]> = {};
+          medicalItems.forEach(item => {
+            const doc = (item.doctorName || 'MÉDICO NO ESPECIFICADO').trim().toUpperCase();
+            if (!byDoctor[doc]) byDoctor[doc] = [];
+            byDoctor[doc].push(item);
+          });
+
+          Object.entries(byDoctor).forEach(([docName, docComplaints]) => {
+            const patientsList = docComplaints.map(d => `${d.patientName || 'Anónimo'} (${d.date})`).join('; ');
+            const row = worksheet.addRow([docName, docComplaints.length, patientsList]);
+            row.eachCell(c => {
+              c.border = borderStyle;
+              c.font = fontStandard;
+            });
+          });
+          worksheet.addRow([]);
+        }
+
+        if (otherItems.length > 0) {
+          const subTitle2 = worksheet.addRow(['OTRAS ÁREAS (Listado Detallado)']);
+          subTitle2.font = { bold: true, size: 10, color: { argb: 'FF475569' }, name: 'Plus Jakarta Sans' };
+
+          const otherHeader = worksheet.addRow(['FECHA', 'PACIENTE', 'ÁREA', 'RECONOCIMIENTO / DETALLE', 'ESTADO']);
+          otherHeader.eachCell(c => {
+            c.font = fontWhite;
+            c.fill = headerFill;
+            c.border = borderStyle;
+          });
+
+          otherItems.forEach(item => {
+            const row = worksheet.addRow([
+              item.date,
+              (item.patientName || 'ANÓNIMO').toUpperCase(),
+              item.area,
+              item.description,
+              item.status.toUpperCase()
+            ]);
+            row.eachCell(c => {
+              c.border = borderStyle;
+              c.font = fontStandard;
+            });
+          });
+          worksheet.addRow([]);
+        }
+      } else {
+        const sugHeader = worksheet.addRow(['FECHA', 'PACIENTE', 'ÁREA', 'SUGERENCIA', 'ESTADO', 'APLICABLE']);
+        sugHeader.eachCell(c => {
+          c.font = fontWhite;
+          c.fill = headerFill;
+          c.border = borderStyle;
+        });
+
+        items.forEach(item => {
+          const row = worksheet.addRow([
+            item.date,
+            (item.patientName || 'ANÓNIMO').toUpperCase(),
+            item.area,
+            item.description,
+            item.status.toUpperCase(),
+            item.isApplicable === true ? 'SÍ' : (item.isApplicable === false ? 'NO' : 'PENDIENTE')
+          ]);
+          row.eachCell(c => {
+            c.border = borderStyle;
+            c.font = fontStandard;
+          });
+        });
+        worksheet.addRow([]);
+      }
+
+      worksheet.addRow([]);
+    });
+
+    worksheet.columns = [
+      { width: 35 },
+      { width: 30 },
+      { width: 35 },
+      { width: 65 },
+      { width: 22 },
+      { width: 22 }
+    ];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = activeTab === ComplaintType.FELICITACION ? `Reporte_Felicitaciones_${new Date().toISOString().split('T')[0]}.xlsx` : `Reporte_Sugerencias_${new Date().toISOString().split('T')[0]}.xlsx`;
+    saveAs(blob, fileName);
+  };
+
   return (
     <div className="space-y-6 pb-20">
       <div className="glass-card bg-white p-8 shadow-sm border border-slate-100 no-print flex flex-col md:flex-row justify-between items-center gap-6">
@@ -178,6 +393,14 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
               <option value={ComplaintStatus.RESUELTO}>{ComplaintStatus.RESUELTO}</option>
             </select>
           </div>
+
+          <button
+            onClick={handleExportExcel}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-200 transition-all flex items-center gap-2 h-[46px]"
+            title="Exportar a Excel"
+          >
+            <span>📊</span> Exportar Excel
+          </button>
 
           <div className="flex bg-slate-100 p-1 rounded-2xl gap-1 h-[46px] items-center">
             {[ComplaintType.FELICITACION, ComplaintType.SUGERENCIA].map(type => (
