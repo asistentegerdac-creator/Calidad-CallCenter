@@ -172,14 +172,29 @@ const App: React.FC = () => {
     if (isOnline) {
       const userFromDb = await dbService.login(u, p);
       if (userFromDb) {
+        if (userFromDb.active === false) {
+          alert('Acceso denegado: Su usuario se encuentra inactivo.');
+          return;
+        }
         setCurrentUser(userFromDb);
         setIsLoggedIn(true);
         return;
       }
     }
 
+    const localUser = users.find(usr => usr.username.toLowerCase() === u.toLowerCase() && usr.password === p);
+    if (localUser) {
+      if (localUser.active === false) {
+        alert('Acceso denegado: Su usuario se encuentra inactivo.');
+        return;
+      }
+      setCurrentUser(localUser);
+      setIsLoggedIn(true);
+      return;
+    }
+
     if (u === 'admin' && p === 'admin') {
-      setCurrentUser({ id: '1', name: 'Super Admin Local', username: 'admin', role: 'admin', permissions: ['all'] });
+      setCurrentUser({ id: '1', name: 'Super Admin Local', username: 'admin', role: 'admin', permissions: ['all'], active: true });
       setIsLoggedIn(true);
     } else {
       alert('Denegado. Verifique que el usuario existe en el Nodo Postgres.');

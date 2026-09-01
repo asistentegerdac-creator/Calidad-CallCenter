@@ -90,6 +90,7 @@ export interface User {
   name: string;
   role: 'admin' | 'agent' | 'auditor';
   permissions: string[];
+  active?: boolean;
 }
 
 export type View = 'dashboard' | 'incidences' | 'new-incidence' | 'reports' | 'analytics' | 'settings' | 'no-call' | 'tardanzas' | 'compliments_suggestions';

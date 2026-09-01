@@ -34,8 +34,14 @@ export const Settings: React.FC<Props> = ({
   
   const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
   const [newMapping, setNewMapping] = useState({ area: '', manager: '' });
-  const [newUser, setNewUser] = useState({ id: '', username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' | 'auditor' });
+  const [newUser, setNewUser] = useState({ id: '', username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' | 'auditor', active: true });
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [deleteReassignModal, setDeleteReassignModal] = useState<{
+    isOpen: boolean;
+    userToDelete: User | null;
+    pendingComplaints: Complaint[];
+    targetManagerName: string;
+  } | null>(null);
   const [newItem, setNewItem] = useState({ type: 'area', value: '' });
 
   const [newDim, setNewDim] = useState('');
@@ -72,17 +78,20 @@ export const Settings: React.FC<Props> = ({
     }
   };
 
-  // Solo mostrar nombres de Jefaturas con áreas a cargo en el organigrama, excluyendo a auditores
+  // Solo mostrar nombres de Jefaturas con áreas a cargo en el organigrama, excluyendo a auditores y usuarios inactivos
   const managerOptions = useMemo(() => {
     const auditorNames = new Set(
       users.filter(u => u.role === 'auditor').map(u => u.name.trim().toLowerCase())
+    );
+    const inactiveUserNames = new Set(
+      users.filter(u => u.active === false).map(u => u.name.trim().toLowerCase())
     );
 
     const set = new Set<string>();
     areaMappings.forEach(m => {
       const mgr = (m.managerName || '').trim();
       const area = (m.areaName || '').trim();
-      if (mgr && area && !auditorNames.has(mgr.toLowerCase())) {
+      if (mgr && area && !auditorNames.has(mgr.toLowerCase()) && !inactiveUserNames.has(mgr.toLowerCase())) {
         set.add(mgr);
       }
     });
@@ -90,7 +99,7 @@ export const Settings: React.FC<Props> = ({
     // Fallback únicamente si el organigrama no tiene jefaturas asignadas aún
     if (set.size === 0) {
       users.forEach(u => {
-        if (u.role !== 'auditor' && u.name) {
+        if (u.role !== 'auditor' && u.active !== false && u.name) {
           set.add(u.name.trim());
         }
       });
@@ -370,30 +379,117 @@ export const Settings: React.FC<Props> = ({
     const userToSave: User = { 
       ...newUser, 
       id: editingUserId || `USR-${Date.now()}`, 
-      permissions: ['dashboard'] 
+      permissions: ['dashboard'],
+      active: newUser.active !== false
     };
     if (isOnline) {
       const ok = await dbService.saveUser(userToSave);
       if (ok) {
         const updatedUsers = await dbService.fetchUsers();
         setUsers(updatedUsers);
-        setNewUser({ id: '', username: '', name: '', password: '', role: 'agent' });
+        setNewUser({ id: '', username: '', name: '', password: '', role: 'agent', active: true });
         setEditingUserId(null);
         alert("Usuario procesado correctamente.");
       }
-    } else { alert("Debe estar online."); }
+    } else { 
+      const updatedUsers = editingUserId 
+        ? users.map(u => u.id === editingUserId ? userToSave : u)
+        : [...users, userToSave];
+      setUsers(updatedUsers);
+      setNewUser({ id: '', username: '', name: '', password: '', role: 'agent', active: true });
+      setEditingUserId(null);
+      alert("Usuario procesado correctamente (Local).");
+    }
   };
 
   const startEditUser = (u: User) => {
     setEditingUserId(u.id);
-    setNewUser({ id: u.id, username: u.username, name: u.name, password: u.password || '', role: u.role });
+    setNewUser({ 
+      id: u.id, 
+      username: u.username, 
+      name: u.name, 
+      password: u.password || '', 
+      role: u.role,
+      active: u.active !== false
+    });
   };
 
-  const handleDeleteUser = async (id: string) => {
-    if (!confirm("¿Eliminar usuario?")) return;
+  const handleToggleUserStatus = async (u: User) => {
+    const newStatus = u.active === false ? true : false;
+    const updatedUser: User = { ...u, active: newStatus };
     if (isOnline) {
-      await dbService.deleteUser(id);
-      setUsers(users.filter(u => u.id !== id));
+      await dbService.saveUser(updatedUser);
+      const updatedUsers = await dbService.fetchUsers();
+      setUsers(updatedUsers);
+    } else {
+      setUsers(users.map(usr => usr.id === u.id ? updatedUser : usr));
+    }
+  };
+
+  const initiateDeleteUser = (u: User) => {
+    const pendingToReassign = complaints.filter(c => 
+      (c.managerName || '').trim().toLowerCase() === u.name.trim().toLowerCase() && 
+      (c.status === ComplaintStatus.PENDIENTE || c.status === ComplaintStatus.PROCESO)
+    );
+
+    if (pendingToReassign.length > 0) {
+      const candidates = users.filter(usr => usr.id !== u.id && usr.active !== false && usr.role !== 'auditor');
+      const defaultTarget = candidates[0]?.name || '';
+
+      setDeleteReassignModal({
+        isOpen: true,
+        userToDelete: u,
+        pendingComplaints: pendingToReassign,
+        targetManagerName: defaultTarget
+      });
+    } else {
+      if (confirm(`¿Está seguro de eliminar al usuario "${u.name}" (${u.username})?`)) {
+        executeDeleteUser(u.id);
+      }
+    }
+  };
+
+  const executeDeleteUser = async (userId: string, targetManagerForReassignment?: string, pendingToReassign?: Complaint[]) => {
+    const userToDelete = users.find(u => u.id === userId);
+
+    if (targetManagerForReassignment && pendingToReassign && pendingToReassign.length > 0) {
+      const updatedComplaints = complaints.map(c => {
+        if (pendingToReassign.some(p => p.id === c.id)) {
+          const updated = { ...c, managerName: targetManagerForReassignment };
+          if (isOnline) dbService.saveComplaint(updated);
+          return updated;
+        }
+        return c;
+      });
+      setComplaints(updatedComplaints);
+      safeSaveLocalComplaints(updatedComplaints);
+
+      if (userToDelete) {
+        const updatedMappings = areaMappings.map(m => {
+          if ((m.managerName || '').trim().toLowerCase() === userToDelete.name.trim().toLowerCase()) {
+            const newMapping = { ...m, managerName: targetManagerForReassignment };
+            if (isOnline) dbService.saveAreaConfig(newMapping);
+            return newMapping;
+          }
+          return m;
+        });
+        setAreaMappings(updatedMappings);
+      }
+    }
+
+    if (isOnline) {
+      await dbService.deleteUser(userId);
+      const updatedUsers = await dbService.fetchUsers();
+      setUsers(updatedUsers);
+    } else {
+      setUsers(users.filter(u => u.id !== userId));
+    }
+
+    setDeleteReassignModal(null);
+    if (targetManagerForReassignment && pendingToReassign && pendingToReassign.length > 0 && userToDelete) {
+      alert(`Se derivaron ${pendingToReassign.length} incidencia(s) a "${targetManagerForReassignment}" y se eliminó al usuario "${userToDelete.name}" con éxito.`);
+    } else {
+      alert("Usuario eliminado correctamente.");
     }
   };
 
@@ -448,7 +544,7 @@ export const Settings: React.FC<Props> = ({
              <div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400">Jefe Responsable</label>
                 <select className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newMapping.manager} onChange={e => setNewMapping({...newMapping, manager: e.target.value})}>
                    <option value="">-- Seleccione Jefe --</option>
-                   {users.map(u => <option key={u.id} value={u.name}>{u.name} ({u.username})</option>)}
+                   {users.filter(u => u.active !== false && u.role !== 'auditor').map(u => <option key={u.id} value={u.name}>{u.name} ({u.username})</option>)}
                 </select>
              </div>
              <button onClick={handleSaveMapping} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest">Vincular y Reasignar</button>
@@ -667,17 +763,17 @@ export const Settings: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* GESTIÓN DE AUDITORES */}
+      {/* GESTIÓN DE USUARIOS */}
       <div className="glass-card p-10 bg-white shadow-xl border border-slate-50">
         <h3 className="text-xl font-black mb-8 uppercase text-slate-900 flex items-center gap-3">
           <span className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white text-sm">👥</span>
-          Gestión de Auditores
+          Gestión de Usuarios y Permisos
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
           <div className="space-y-4 bg-slate-50 p-8 rounded-[2.5rem] border">
              <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" placeholder="Usuario" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
-             <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" placeholder="Nombre" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
-             <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" type="password" placeholder="Clave" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+             <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" placeholder="Nombre completo" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
+             <input className="w-full p-4 bg-white border rounded-xl font-bold text-xs" type="password" placeholder="Contraseña" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
              <div className="space-y-1">
                 <label className="text-[9px] font-black uppercase text-slate-400">Rol de Usuario</label>
                 <select className="w-full p-4 bg-white border rounded-xl font-bold text-xs" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as any})}>
@@ -686,26 +782,61 @@ export const Settings: React.FC<Props> = ({
                    <option value="auditor">AUDITOR (CONTROL DE CALIDAD)</option>
                 </select>
              </div>
-             <div className="flex gap-2">
+             <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-slate-400">Estado de Acceso</label>
+                <select className="w-full p-4 bg-white border rounded-xl font-bold text-xs" value={newUser.active ? 'activo' : 'inactivo'} onChange={e => setNewUser({...newUser, active: e.target.value === 'activo'})}>
+                   <option value="activo">🟢 ACTIVO (PERMITIR ACCESO)</option>
+                   <option value="inactivo">🔴 INACTIVO (BLOQUEAR ACCESO)</option>
+                </select>
+             </div>
+             <div className="flex gap-2 pt-2">
                 <button onClick={handleCreateOrUpdateUser} className={`flex-1 py-4 text-white rounded-xl font-black text-[10px] uppercase tracking-widest ${editingUserId ? 'bg-amber-600' : 'bg-slate-900'}`}>
-                  {editingUserId ? 'Actualizar' : 'Registrar'}
+                  {editingUserId ? 'Actualizar Usuario' : 'Registrar Usuario'}
                 </button>
-                {editingUserId && <button onClick={() => { setEditingUserId(null); setNewUser({id:'',username:'',name:'',password:'',role:'agent'}); }} className="px-6 bg-slate-200 rounded-xl font-black text-[10px] uppercase">Cerrar</button>}
+                {editingUserId && <button onClick={() => { setEditingUserId(null); setNewUser({id:'',username:'',name:'',password:'',role:'agent',active:true}); }} className="px-6 bg-slate-200 rounded-xl font-black text-[10px] uppercase">Cancelar</button>}
              </div>
           </div>
-          <div className="border rounded-[2rem] overflow-hidden bg-white">
-             <table className="w-full text-left">
-                <thead className="bg-slate-50 text-[9px] font-black text-slate-400"><tr><th className="px-6 py-4">Usuario</th><th className="px-6 py-4 text-right"></th></tr></thead>
-                <tbody className="divide-y">
+          <div className="border rounded-[2rem] overflow-hidden bg-white shadow-sm">
+             <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase border-b">
+                   <tr>
+                      <th className="px-6 py-4">Usuario / Nombre</th>
+                      <th className="px-6 py-4">Estado</th>
+                      <th className="px-6 py-4 text-right">Acciones</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
                    {users.map(u => (
-                     <tr key={u.id} className="text-[10px] font-black">
-                       <td className="px-6 py-4">{u.username} <span className="block text-[8px] text-slate-400">{u.name}</span></td>
-                       <td className="px-6 py-4 text-right">
-                         <button onClick={() => startEditUser(u)} className="text-indigo-500 mr-4">✎</button>
-                         <button onClick={() => handleDeleteUser(u.id)} className="text-rose-500">✕</button>
+                     <tr key={u.id} className={`text-[10px] font-black transition-colors ${u.active === false ? 'bg-rose-50/30' : 'hover:bg-slate-50/50'}`}>
+                       <td className="px-6 py-4">
+                         <span className="text-slate-900 block">{u.username}</span>
+                         <span className="text-[8px] text-slate-400 font-bold block">{u.name} • <span className="uppercase text-slate-500">{u.role}</span></span>
+                       </td>
+                       <td className="px-6 py-4">
+                         <button 
+                           type="button"
+                           onClick={() => handleToggleUserStatus(u)}
+                           title="Haga clic para cambiar de estado"
+                           className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
+                             u.active !== false 
+                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
+                               : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                           }`}
+                         >
+                           {u.active !== false ? '🟢 ACTIVO' : '🔴 INACTIVO'}
+                         </button>
+                       </td>
+                       <td className="px-6 py-4 text-right whitespace-nowrap">
+                         <button onClick={() => startEditUser(u)} className="text-indigo-600 font-bold mr-3 hover:underline text-xs" title="Editar usuario">✎ Editar</button>
+                         <button onClick={() => initiateDeleteUser(u)} className="text-rose-600 font-bold hover:underline text-xs" title="Eliminar usuario">✕ Eliminar</button>
                        </td>
                      </tr>
                    ))}
+                   {users.length === 0 && (
+                     <tr>
+                       <td colSpan={3} className="px-6 py-8 text-center text-slate-400 font-bold">No hay usuarios registrados.</td>
+                     </tr>
+                   )}
                 </tbody>
              </table>
           </div>
@@ -946,6 +1077,74 @@ export const Settings: React.FC<Props> = ({
           ))}
         </div>
       </div>
+
+      {/* MODAL DE REASIGNACIÓN DE INCIDENCIAS AL ELIMINAR USUARIO */}
+      {deleteReassignModal?.isOpen && deleteReassignModal.userToDelete && (
+        <div className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl space-y-6 border border-slate-100">
+            <div className="flex items-center gap-3 text-amber-600">
+              <span className="w-10 h-10 bg-amber-100 rounded-2xl flex items-center justify-center text-xl font-black">⚠️</span>
+              <div>
+                <h3 className="text-lg font-black uppercase text-slate-900 leading-tight">Reasignación de Incidencias Pendientes</h3>
+                <p className="text-[10px] font-bold uppercase text-slate-400">Acción requerida antes de eliminar usuario</p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 font-medium space-y-2">
+              <p>
+                El usuario <strong className="font-black text-amber-950">{deleteReassignModal.userToDelete.name}</strong> ({deleteReassignModal.userToDelete.username}) tiene <strong className="font-black text-rose-600">{deleteReassignModal.pendingComplaints.length}</strong> incidencia(s) sin contestar (Pendientes o En Proceso).
+              </p>
+              <p className="text-[11px] font-bold text-slate-700">
+                Seleccione a qué otro Jefe desea derivar estas incidencias antes de eliminar este usuario:
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[9px] font-black uppercase text-slate-400 block ml-1">Jefe Destino para Derivación</label>
+              <select
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-amber-500"
+                value={deleteReassignModal.targetManagerName}
+                onChange={e => setDeleteReassignModal({ ...deleteReassignModal, targetManagerName: e.target.value })}
+              >
+                {users
+                  .filter(u => u.id !== deleteReassignModal.userToDelete?.id && u.active !== false && u.role !== 'auditor')
+                  .map(u => (
+                    <option key={u.id} value={u.name}>
+                      {u.name} ({u.role.toUpperCase()})
+                    </option>
+                  ))}
+              </select>
+              {users.filter(u => u.id !== deleteReassignModal.userToDelete?.id && u.active !== false && u.role !== 'auditor').length === 0 && (
+                <p className="text-[10px] font-bold text-rose-500 mt-1">
+                  * No hay otros jefes activos disponibles. Por favor active o cree otro usuario antes de continuar.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeleteReassignModal(null)}
+                className="px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-[10px] uppercase tracking-wider"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!deleteReassignModal.targetManagerName}
+                onClick={() => executeDeleteUser(
+                  deleteReassignModal.userToDelete!.id,
+                  deleteReassignModal.targetManagerName,
+                  deleteReassignModal.pendingComplaints
+                )}
+                className="px-6 py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-lg shadow-rose-200 disabled:opacity-50"
+              >
+                Derivar e Eliminar Usuario
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

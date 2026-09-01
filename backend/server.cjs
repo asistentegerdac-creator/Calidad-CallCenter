@@ -21,7 +21,8 @@ const syncSchema = async (targetPool) => {
     // 1. Crear Tablas base si no existen
     await client.query(`CREATE TABLE IF NOT EXISTS dac_areas_master (name VARCHAR(100) PRIMARY KEY);`);
     await client.query(`CREATE TABLE IF NOT EXISTS dac_specialties_master (name VARCHAR(100) PRIMARY KEY);`);
-    await client.query(`CREATE TABLE IF NOT EXISTS dac_users (user_id VARCHAR(50) PRIMARY KEY, username VARCHAR(100) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, full_name VARCHAR(255), role VARCHAR(20) DEFAULT 'agent', permissions TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`);
+    await client.query(`CREATE TABLE IF NOT EXISTS dac_users (user_id VARCHAR(50) PRIMARY KEY, username VARCHAR(100) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, full_name VARCHAR(255), role VARCHAR(20) DEFAULT 'agent', permissions TEXT, active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`);
+    await client.query(`ALTER TABLE dac_users ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;`);
     await client.query(`CREATE TABLE IF NOT EXISTS dac_areas_config (area_name VARCHAR(100) PRIMARY KEY, manager_name VARCHAR(255) NOT NULL);`);
     await client.query(`CREATE TABLE IF NOT EXISTS medical_incidences (audit_id VARCHAR(50) PRIMARY KEY, incidence_date DATE NOT NULL, patient_name VARCHAR(255) NOT NULL, complaint_description TEXT NOT NULL, registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`);
     await client.query(`CREATE TABLE IF NOT EXISTS daily_stats (stat_date DATE PRIMARY KEY);`);
@@ -118,7 +119,7 @@ app.post('/api/login', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'OFFLINE' });
   const { username, password } = req.body;
   try {
-    const r = await pool.query('SELECT user_id as id, username, full_name as name, role FROM dac_users WHERE username=$1 AND password=$2', [username, password]);
+    const r = await pool.query('SELECT user_id as id, username, full_name as name, role, active FROM dac_users WHERE username=$1 AND password=$2', [username, password]);
     res.json(r.rows[0] || null);
   } catch (e) { res.status(500).send(e.message); }
 });
@@ -266,7 +267,7 @@ app.delete('/api/nocall/:id', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   if (!pool) return res.json([]);
   try {
-    const r = await pool.query('SELECT user_id as id, username, password, full_name as name, role FROM dac_users');
+    const r = await pool.query('SELECT user_id as id, username, password, full_name as name, role, active FROM dac_users');
     res.json(r.rows);
   } catch (e) { res.status(500).send(e.message); }
 });
@@ -274,8 +275,9 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
   if (!pool) return res.sendStatus(503);
   const u = req.body;
+  const isActive = u.active !== false;
   try {
-    await pool.query('INSERT INTO dac_users (user_id, username, password, full_name, role) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id) DO UPDATE SET username=EXCLUDED.username, password=EXCLUDED.password, full_name=EXCLUDED.full_name, role=EXCLUDED.role', [u.id, u.username, u.password, u.name, u.role]);
+    await pool.query('INSERT INTO dac_users (user_id, username, password, full_name, role, active) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (user_id) DO UPDATE SET username=EXCLUDED.username, password=EXCLUDED.password, full_name=EXCLUDED.full_name, role=EXCLUDED.role, active=EXCLUDED.active', [u.id, u.username, u.password, u.name, u.role, isActive]);
     res.sendStatus(201);
   } catch (e) { res.status(500).send(e.message); }
 });
