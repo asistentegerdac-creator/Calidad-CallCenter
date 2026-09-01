@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Complaint, ComplaintStatus, User, NoCallPatient, Priority, DimensionCatalogEntry } from '../types';
+import { Complaint, ComplaintStatus, User, NoCallPatient, Priority, DimensionCatalogEntry, AreaMapping } from '../types';
 import { dbService } from '../services/apiService';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -18,6 +18,7 @@ interface Props {
   users?: User[];
   dimensions: DimensionCatalogEntry[];
   onAddDimension: (dimension: string, subDimension: string) => void;
+  areaMappings?: AreaMapping[];
 }
 
 // Componente de Fila Memoizado para mejor rendimiento
@@ -117,7 +118,7 @@ const ReportRow = React.memo(({
   );
 });
 
-export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser, timezone, onPreviewImage, users = [], dimensions = [], onAddDimension }) => {
+export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpdateFull, onDelete, currentUser, timezone, onPreviewImage, users = [], dimensions = [], onAddDimension, areaMappings = [] }) => {
   const [filterManager, setFilterManager] = useState('Todos');
   const [filterArea, setFilterArea] = useState('Todas');
   const [filterStatus, setFilterStatus] = useState('Todos');
@@ -207,25 +208,30 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   };
 
   const managers = useMemo(() => {
-    const activeUserNames = new Set(
-      (users || []).filter(u => u.role !== 'auditor' && u.active !== false).map(u => u.name.trim().toLowerCase())
+    const assignedManagerNames = new Set(
+      (areaMappings || [])
+        .filter(m => m.areaName && m.areaName.trim())
+        .map(m => (m.managerName || '').trim())
+        .filter(Boolean)
     );
 
-    let list: string[] = [];
-    if (users && users.length > 0) {
+    let list = (users || [])
+      .filter(u => u.role !== 'auditor' && u.active !== false)
+      .filter(u => {
+        const uNameLower = u.name.trim().toLowerCase();
+        return Array.from(assignedManagerNames).some(mName => mName.toLowerCase() === uNameLower);
+      })
+      .map(u => u.name.trim());
+
+    // Fallback únicamente si el organigrama no tiene ninguna jefatura asignada aún
+    if (list.length === 0 && (!areaMappings || areaMappings.length === 0) && users && users.length > 0) {
       list = users
         .filter(u => u.role !== 'auditor' && u.active !== false)
         .map(u => u.name.trim());
-    } else {
-      list = Array.from(new Set(complaints.map(c => c.managerName).filter((m): m is string => Boolean(m))));
-    }
-
-    if (activeUserNames.size > 0) {
-      list = list.filter(m => activeUserNames.has(m.trim().toLowerCase()));
     }
 
     return Array.from(new Set(list)).sort();
-  }, [users, complaints]);
+  }, [users, areaMappings]);
 
   const filtered = useMemo(() => {
     const statusOrder = {

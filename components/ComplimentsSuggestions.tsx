@@ -14,10 +14,11 @@ interface Props {
   timezone: string;
   areas: string[];
   users: User[];
+  areaMappings?: AreaMapping[];
 }
 
 export const ComplimentsSuggestions: React.FC<Props> = ({ 
-  complaints, currentUser, onUpdateFull, onDelete, timezone, areas, users
+  complaints, currentUser, onUpdateFull, onDelete, timezone, areas, users, areaMappings: propAreaMappings
 }) => {
   const [activeTab, setActiveTab] = useState<ComplaintType>(ComplaintType.FELICITACION);
   const [filterArea, setFilterArea] = useState('Todas');
@@ -28,39 +29,43 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
   const [reason, setReason] = useState('');
   const [implementationDetail, setImplementationDetail] = useState('');
   const [referredArea, setReferredArea] = useState('');
-  const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
+  const [localAreaMappings, setLocalAreaMappings] = useState<AreaMapping[]>([]);
+
+  const areaMappings = propAreaMappings || localAreaMappings;
 
   useEffect(() => {
-    dbService.fetchAreasConfig().then(mappings => {
-      if (mappings && Array.isArray(mappings)) {
-        setAreaMappings(mappings);
-      }
-    }).catch(() => {});
-  }, []);
+    if (!propAreaMappings) {
+      dbService.fetchAreasConfig().then(mappings => {
+        if (mappings && Array.isArray(mappings)) {
+          setLocalAreaMappings(mappings);
+        }
+      }).catch(() => {});
+    }
+  }, [propAreaMappings]);
 
   const managerOptions = useMemo(() => {
-    const activeUserNames = new Set(
-      users.filter(u => u.role !== 'auditor' && u.active !== false).map(u => u.name.trim().toLowerCase())
+    const assignedManagerNames = new Set(
+      (areaMappings || [])
+        .filter(m => m.areaName && m.areaName.trim())
+        .map(m => (m.managerName || '').trim())
+        .filter(Boolean)
     );
 
-    const set = new Set<string>();
-    areaMappings.forEach(m => {
-      const mgr = (m.managerName || '').trim();
-      const area = (m.areaName || '').trim();
-      if (mgr && area && activeUserNames.has(mgr.toLowerCase())) {
-        set.add(mgr);
-      }
-    });
+    let list = (users || [])
+      .filter(u => u.role !== 'auditor' && u.active !== false)
+      .filter(u => {
+        const uNameLower = u.name.trim().toLowerCase();
+        return Array.from(assignedManagerNames).some(mName => mName.toLowerCase() === uNameLower);
+      })
+      .map(u => u.name.trim());
 
-    if (set.size === 0) {
-      users.forEach(u => {
-        if (u.role !== 'auditor' && u.active !== false && u.name) {
-          set.add(u.name.trim());
-        }
-      });
+    if (list.length === 0 && (!areaMappings || areaMappings.length === 0) && users && users.length > 0) {
+      list = users
+        .filter(u => u.role !== 'auditor' && u.active !== false)
+        .map(u => u.name.trim());
     }
 
-    return Array.from(set).sort();
+    return Array.from(new Set(list)).sort();
   }, [users, areaMappings]);
 
   const filtered = useMemo(() => {

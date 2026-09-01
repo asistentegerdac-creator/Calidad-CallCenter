@@ -16,6 +16,8 @@ interface Props {
   dimensions: DimensionCatalogEntry[];
   onAddDimension: (dimension: string, subDimension: string) => void;
   onRemoveDimension: (id?: number, dimension?: string, subDimension?: string) => void;
+  areaMappings?: AreaMapping[];
+  setAreaMappings?: (mappings: AreaMapping[]) => void;
 }
 
 export const Settings: React.FC<Props> = ({ 
@@ -23,7 +25,8 @@ export const Settings: React.FC<Props> = ({
   currentTheme, setTheme, timezone, setTimezone, areas, onAddArea, onRemoveArea,
   specialties, onAddSpecialty, onRemoveSpecialty,
   complaints, setComplaints,
-  dimensions, onAddDimension, onRemoveDimension
+  dimensions, onAddDimension, onRemoveDimension,
+  areaMappings: propAreaMappings, setAreaMappings: propSetAreaMappings
 }) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -32,7 +35,14 @@ export const Settings: React.FC<Props> = ({
   const [connMessage, setConnMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
+  const [localAreaMappings, setLocalAreaMappings] = useState<AreaMapping[]>([]);
+  const areaMappings = propAreaMappings || localAreaMappings;
+
+  const updateAreaMappings = (mappings: AreaMapping[]) => {
+    if (propSetAreaMappings) propSetAreaMappings(mappings);
+    setLocalAreaMappings(mappings);
+  };
+
   const [newMapping, setNewMapping] = useState({ area: '', manager: '' });
   const [newUser, setNewUser] = useState({ id: '', username: '', name: '', password: '', role: 'agent' as 'admin' | 'agent' | 'auditor', active: true });
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -260,17 +270,17 @@ export const Settings: React.FC<Props> = ({
   ];
 
   useEffect(() => {
-    if (isOnline) {
-      const loadData = async () => {
-        try {
-          const mappings = await dbService.fetchAreasConfig();
-          setAreaMappings(mappings);
+    const loadData = async () => {
+      try {
+        const mappings = await dbService.fetchAreasConfig();
+        if (mappings) updateAreaMappings(mappings);
+        if (isOnline) {
           const remoteUsers = await dbService.fetchUsers();
           setUsers(remoteUsers);
-        } catch (e) { console.error("Error cargando configuración:", e); }
-      };
-      loadData();
-    }
+        }
+      } catch (e) { console.error("Error cargando configuración:", e); }
+    };
+    loadData();
   }, [isOnline]);
 
   const handleTestConnection = async () => {
@@ -345,33 +355,24 @@ export const Settings: React.FC<Props> = ({
 
   const handleSaveMapping = async () => {
     if (!newMapping.area || !newMapping.manager) return;
-    if (isOnline) {
-      // 1. Guardar la configuración del organigrama
-      await dbService.saveAreaConfig({ areaName: newMapping.area, managerName: newMapping.manager });
-      const mappings = await dbService.fetchAreasConfig();
-      setAreaMappings(mappings);
+    await dbService.saveAreaConfig({ areaName: newMapping.area, managerName: newMapping.manager });
+    const mappings = await dbService.fetchAreasConfig();
+    updateAreaMappings(mappings);
 
-      // 2. Lógica de Reasignación Automática
-      // Buscamos todas las quejas del área que NO estén resueltas
-      const updatedComplaints = complaints.map(c => {
-        if (c.area === newMapping.area && c.status !== ComplaintStatus.RESUELTO) {
-          const updated = { ...c, managerName: newMapping.manager };
-          // Sincronizamos cada ficha actualizada con el Nodo
-          dbService.saveComplaint(updated);
-          return updated;
-        }
-        return c;
-      });
+    const updatedComplaints = complaints.map(c => {
+      if (c.area === newMapping.area && c.status !== ComplaintStatus.RESUELTO) {
+        const updated = { ...c, managerName: newMapping.manager };
+        if (isOnline) dbService.saveComplaint(updated);
+        return updated;
+      }
+      return c;
+    });
 
-      // 3. Actualizamos el estado local y el almacenamiento
-      setComplaints(updatedComplaints);
-      localStorage.setItem('dac_complaints', JSON.stringify(updatedComplaints));
+    setComplaints(updatedComplaints);
+    safeSaveLocalComplaints(updatedComplaints);
 
-      setNewMapping({ area: '', manager: '' });
-      alert(`Jefatura vinculada. Se han reasignado automáticamente las fichas pendientes y en proceso del área ${newMapping.area}.`);
-    } else {
-      alert("Debe estar conectado al Nodo para actualizar jefaturas.");
-    }
+    setNewMapping({ area: '', manager: '' });
+    alert(`Jefatura vinculada. Se han reasignado automáticamente las fichas pendientes y en proceso del área ${newMapping.area}.`);
   };
 
   const handleCreateOrUpdateUser = async () => {
@@ -477,7 +478,7 @@ export const Settings: React.FC<Props> = ({
         }
         return m;
       });
-      setAreaMappings(updatedMappings);
+      updateAreaMappings(updatedMappings);
     }
 
     if (isOnline) {

@@ -114,8 +114,17 @@ export const dbService = {
   async fetchAreasConfig(): Promise<AreaMapping[]> {
     try {
       const r = await fetch(`${API_BASE}/areas-config`);
-      return r.ok ? await r.json() : [];
-    } catch { return []; }
+      if (r.ok) {
+        const data = await r.json();
+        try { localStorage.setItem('dac_areas_config', JSON.stringify(data)); } catch {}
+        return data;
+      }
+    } catch {}
+    try {
+      const stored = localStorage.getItem('dac_areas_config');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [];
   },
 
   async saveAreaConfig(mapping: AreaMapping) {
@@ -125,6 +134,14 @@ export const dbService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mapping)
       });
+    } catch {}
+    try {
+      const stored = localStorage.getItem('dac_areas_config');
+      let list: AreaMapping[] = stored ? JSON.parse(stored) : [];
+      const idx = list.findIndex(m => m.areaName === mapping.areaName);
+      if (idx >= 0) list[idx] = mapping;
+      else list.push(mapping);
+      localStorage.setItem('dac_areas_config', JSON.stringify(list));
     } catch {}
   },
 

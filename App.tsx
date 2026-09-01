@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Complaint, View, User, ComplaintStatus, ComplaintType, NoCallPatient, DimensionCatalogEntry } from './types';
+import { Complaint, View, User, ComplaintStatus, ComplaintType, NoCallPatient, DimensionCatalogEntry, AreaMapping } from './types';
 import { Dashboard } from './components/Dashboard';
 import { ComplaintForm } from './components/ComplaintForm';
 import { Reports } from './components/Reports';
@@ -35,6 +35,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [users, setUsers] = useState<User[]>([]);
+  const [areaMappings, setAreaMappings] = useState<AreaMapping[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('dac_complaints') || '[]');
@@ -127,11 +128,20 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    dbService.fetchAreasConfig().then(mappings => {
+      if (mappings) setAreaMappings(mappings);
+    });
+  }, []);
+
   const autoSync = useCallback(async () => {
     if (!isOnline) return;
     try {
       const remoteUsers = await dbService.fetchUsers();
       setUsers(remoteUsers);
+      
+      const remoteMappings = await dbService.fetchAreasConfig();
+      if (remoteMappings) setAreaMappings(remoteMappings);
       
       const remoteComplaints = await dbService.fetchComplaints();
       if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
@@ -445,14 +455,14 @@ const App: React.FC = () => {
           <main className="flex-1 w-full min-w-0 p-4 md:p-10 overflow-x-hidden">
             <div className="max-w-7xl mx-auto pt-12 md:pt-0">
               {activeView === 'dashboard' && <Dashboard complaints={complaintsForView} />}
-              {activeView === 'incidences' && <IncidencesReported complaints={incidencesOnly} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} />}
-              {activeView === 'compliments_suggestions' && <ComplimentsSuggestions complaints={complaintsForView} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} timezone={timezone} areas={areas} users={users} />}
+              {activeView === 'incidences' && <IncidencesReported complaints={incidencesOnly} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} isOnline={isOnline} areas={areas} specialties={specialties} onRefresh={autoSync} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} areaMappings={areaMappings} />}
+              {activeView === 'compliments_suggestions' && <ComplimentsSuggestions complaints={complaintsForView} currentUser={currentUser} onUpdateFull={handleUpdateFull} onDelete={handleDeleteComplaint} timezone={timezone} areas={areas} users={users} areaMappings={areaMappings} />}
               {activeView === 'new-incidence' && <ComplaintForm areas={areas} specialties={specialties} onAdd={handleAddComplaint} noCallList={noCallList} timezone={timezone} dimensions={dimensions} onAddDimension={handleAddDimension} />}
-              {activeView === 'reports' && <Reports complaints={complaintsForView} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} />}
-              {activeView === 'analytics' && <AnalyticsView complaints={complaintsForView} users={users} />}
+              {activeView === 'reports' && <Reports complaints={complaintsForView} areas={areas} specialties={specialties} onUpdateFull={handleUpdateFull} currentUser={currentUser} onDelete={handleDeleteComplaint} timezone={timezone} onPreviewImage={setPreviewImage} users={users} dimensions={dimensions} onAddDimension={handleAddDimension} areaMappings={areaMappings} />}
+              {activeView === 'analytics' && <AnalyticsView complaints={complaintsForView} users={users} areaMappings={areaMappings} />}
               {activeView === 'tardanzas' && <Tardanzas complaints={complaintsForView} currentUser={currentUser} onUpdateFull={handleUpdateFull} timezone={timezone} areas={areas} />}
               {activeView === 'no-call' && <NoCallList noCallList={noCallList} isOnline={isOnline} onRefresh={autoSync} />}
-              {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} timezone={timezone} setTimezone={setTimezone} dimensions={dimensions} onAddDimension={handleAddDimension} onRemoveDimension={handleRemoveDimension} />}
+              {activeView === 'settings' && <Settings areas={areas} onAddArea={handleAddArea} onRemoveArea={handleRemoveArea} specialties={specialties} onAddSpecialty={handleAddSpecialty} onRemoveSpecialty={handleRemoveSpecialty} users={users} setUsers={setUsers} currentUser={currentUser} isOnline={isOnline} onConnStatusChange={setIsOnline} currentTheme={currentTheme} setTheme={setCurrentTheme} complaints={complaints} setComplaints={setComplaints} timezone={timezone} setTimezone={setTimezone} dimensions={dimensions} onAddDimension={handleAddDimension} onRemoveDimension={handleRemoveDimension} areaMappings={areaMappings} setAreaMappings={setAreaMappings} />}
             </div>
           </main>
         </>

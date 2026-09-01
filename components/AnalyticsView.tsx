@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   Legend
 } from 'recharts';
-import { Complaint, ComplaintStatus, DIMENSIONS, User } from '../types';
+import { Complaint, ComplaintStatus, DIMENSIONS, User, AreaMapping } from '../types';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { toPng } from 'html-to-image';
@@ -13,11 +13,12 @@ import { motion } from 'motion/react';
 interface Props {
   complaints: Complaint[];
   users?: User[];
+  areaMappings?: AreaMapping[];
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 
-export const AnalyticsView: React.FC<Props> = ({ complaints, users }) => {
+export const AnalyticsView: React.FC<Props> = ({ complaints, users, areaMappings }) => {
   const chartRef1 = useRef<HTMLDivElement>(null);
   const chartRef2 = useRef<HTMLDivElement>(null);
   const chartRef3 = useRef<HTMLDivElement>(null);
@@ -33,14 +34,27 @@ export const AnalyticsView: React.FC<Props> = ({ complaints, users }) => {
   }, [complaints]);
 
   const managerStats = useMemo(() => {
-    const activeUserNames = new Set(
-      (users || []).filter(u => u.role !== 'auditor' && u.active !== false).map(u => u.name.trim().toLowerCase())
+    const assignedManagerNames = new Set(
+      (areaMappings || [])
+        .filter(m => m.areaName && m.areaName.trim())
+        .map(m => (m.managerName || '').trim())
+        .filter(Boolean)
+    );
+
+    const activeManagerNames = new Set(
+      (users || [])
+        .filter(u => u.role !== 'auditor' && u.active !== false)
+        .filter(u => {
+          const uNameLower = u.name.trim().toLowerCase();
+          return Array.from(assignedManagerNames).some(mName => mName.toLowerCase() === uNameLower);
+        })
+        .map(u => u.name.trim().toLowerCase())
     );
 
     const managers: Record<string, { name: string; Pendiente: number; 'En Proceso': number; Observado: number; FelicitacionesSinLeer: number; SugerenciasPendientes: number }> = {};
     complaints.forEach(c => {
       if (!c.managerName) return;
-      if (activeUserNames.size > 0 && !activeUserNames.has(c.managerName.trim().toLowerCase())) return;
+      if (activeManagerNames.size > 0 && !activeManagerNames.has(c.managerName.trim().toLowerCase())) return;
       if (!managers[c.managerName]) {
         managers[c.managerName] = { name: c.managerName, Pendiente: 0, 'En Proceso': 0, Observado: 0, FelicitacionesSinLeer: 0, SugerenciasPendientes: 0 };
       }
