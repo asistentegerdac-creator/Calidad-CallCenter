@@ -207,9 +207,25 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
   };
 
   const managers = useMemo(() => {
-    const list = Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean)));
-    return list.sort();
-  }, [complaints]);
+    const activeUserNames = new Set(
+      (users || []).filter(u => u.role !== 'auditor' && u.active !== false).map(u => u.name.trim().toLowerCase())
+    );
+
+    let list: string[] = [];
+    if (users && users.length > 0) {
+      list = users
+        .filter(u => u.role !== 'auditor' && u.active !== false)
+        .map(u => u.name.trim());
+    } else {
+      list = Array.from(new Set(complaints.map(c => c.managerName).filter((m): m is string => Boolean(m))));
+    }
+
+    if (activeUserNames.size > 0) {
+      list = list.filter(m => activeUserNames.has(m.trim().toLowerCase()));
+    }
+
+    return Array.from(new Set(list)).sort();
+  }, [users, complaints]);
 
   const filtered = useMemo(() => {
     const statusOrder = {
@@ -1206,7 +1222,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                   onChange={(e) => setDeriving({ ...deriving, managerName: e.target.value })}
                 >
                   <option value="">Seleccionar Jefe...</option>
-                  {users.filter(u => u.role === 'agent' || u.role === 'admin').map(u => (
+                  {users.filter(u => u.active !== false && u.role !== 'auditor').map(u => (
                     <option key={u.id} value={u.name}>{u.name} ({u.role === 'admin' ? 'Admin' : 'Jefe'})</option>
                   ))}
                 </select>

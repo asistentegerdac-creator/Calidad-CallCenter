@@ -236,7 +236,26 @@ export const IncidencesReported: React.FC<Props> = ({
       .sort((a, b) => (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0));
   }, [complaints, filterManager, filterArea, filterStatus, filterDimension, dateFrom, dateTo, currentUser]);
 
-  const managers = useMemo(() => Array.from(new Set(complaints.map(c => c.managerName).filter(Boolean))), [complaints]);
+  const managers = useMemo(() => {
+    const activeUserNames = new Set(
+      users.filter(u => u.role !== 'auditor' && u.active !== false).map(u => u.name.trim().toLowerCase())
+    );
+
+    let list: string[] = [];
+    if (users && users.length > 0) {
+      list = users
+        .filter(u => u.role !== 'auditor' && u.active !== false)
+        .map(u => u.name.trim());
+    } else {
+      list = Array.from(new Set(complaints.map(c => c.managerName).filter((m): m is string => Boolean(m))));
+    }
+
+    if (activeUserNames.size > 0) {
+      list = list.filter(m => activeUserNames.has(m.trim().toLowerCase()));
+    }
+
+    return Array.from(new Set(list)).sort();
+  }, [users, complaints]);
 
   const getStatusBadgeClass = (status: ComplaintStatus, isObserved?: boolean) => {
     if (isObserved && status === ComplaintStatus.PENDIENTE) return 'bg-rose-600 text-white shadow-[0_0_15px_rgba(225,29,72,0.4)] animate-pulse';
@@ -540,7 +559,7 @@ export const IncidencesReported: React.FC<Props> = ({
                   value={deriving.managerName || ''}
                 >
                   <option value="">-- Seleccionar Jefe --</option>
-                  {users.filter(u => u.role === 'agent' || u.role === 'admin').map(u => (
+                  {users.filter(u => u.active !== false && u.role !== 'auditor').map(u => (
                     <option key={u.id} value={u.name}>{u.name}</option>
                   ))}
                 </select>

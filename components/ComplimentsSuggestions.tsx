@@ -39,22 +39,22 @@ export const ComplimentsSuggestions: React.FC<Props> = ({
   }, []);
 
   const managerOptions = useMemo(() => {
-    const auditorNames = new Set(
-      users.filter(u => u.role === 'auditor').map(u => u.name.trim().toLowerCase())
+    const activeUserNames = new Set(
+      users.filter(u => u.role !== 'auditor' && u.active !== false).map(u => u.name.trim().toLowerCase())
     );
 
     const set = new Set<string>();
     areaMappings.forEach(m => {
       const mgr = (m.managerName || '').trim();
       const area = (m.areaName || '').trim();
-      if (mgr && area && !auditorNames.has(mgr.toLowerCase())) {
+      if (mgr && area && activeUserNames.has(mgr.toLowerCase())) {
         set.add(mgr);
       }
     });
 
     if (set.size === 0) {
       users.forEach(u => {
-        if (u.role !== 'auditor' && u.name) {
+        if (u.role !== 'auditor' && u.active !== false && u.name) {
           set.add(u.name.trim());
         }
       });

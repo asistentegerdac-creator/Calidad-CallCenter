@@ -452,10 +452,14 @@ export const Settings: React.FC<Props> = ({
   const executeDeleteUser = async (userId: string, targetManagerForReassignment?: string, pendingToReassign?: Complaint[]) => {
     const userToDelete = users.find(u => u.id === userId);
 
-    if (targetManagerForReassignment && pendingToReassign && pendingToReassign.length > 0) {
+    if (userToDelete) {
+      const deletedNameLower = userToDelete.name.trim().toLowerCase();
+      const newManagerName = targetManagerForReassignment || '';
+
+      // 1. Actualizar/derivar todas las incidencias vinculadas al jefe eliminado
       const updatedComplaints = complaints.map(c => {
-        if (pendingToReassign.some(p => p.id === c.id)) {
-          const updated = { ...c, managerName: targetManagerForReassignment };
+        if ((c.managerName || '').trim().toLowerCase() === deletedNameLower) {
+          const updated = { ...c, managerName: newManagerName };
           if (isOnline) dbService.saveComplaint(updated);
           return updated;
         }
@@ -464,17 +468,16 @@ export const Settings: React.FC<Props> = ({
       setComplaints(updatedComplaints);
       safeSaveLocalComplaints(updatedComplaints);
 
-      if (userToDelete) {
-        const updatedMappings = areaMappings.map(m => {
-          if ((m.managerName || '').trim().toLowerCase() === userToDelete.name.trim().toLowerCase()) {
-            const newMapping = { ...m, managerName: targetManagerForReassignment };
-            if (isOnline) dbService.saveAreaConfig(newMapping);
-            return newMapping;
-          }
-          return m;
-        });
-        setAreaMappings(updatedMappings);
-      }
+      // 2. Limpiar/reasignar en organigrama (areaMappings / dac_areas_config)
+      const updatedMappings = areaMappings.map(m => {
+        if ((m.managerName || '').trim().toLowerCase() === deletedNameLower) {
+          const newMapping = { ...m, managerName: newManagerName };
+          if (isOnline) dbService.saveAreaConfig(newMapping);
+          return newMapping;
+        }
+        return m;
+      });
+      setAreaMappings(updatedMappings);
     }
 
     if (isOnline) {
