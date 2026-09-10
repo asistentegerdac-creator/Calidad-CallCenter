@@ -21,6 +21,69 @@ interface Props {
   areaMappings?: AreaMapping[];
 }
 
+const MONTH_NAMES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
+const getMonthNameYear = (ymStr: string) => {
+  if (!ymStr || !ymStr.includes('-')) return ymStr;
+  const parts = ymStr.split('-');
+  const y = parts[0];
+  const mIndex = parseInt(parts[1], 10) - 1;
+  if (mIndex >= 0 && mIndex < 12) {
+    return `${MONTH_NAMES_ES[mIndex]} ${y}`;
+  }
+  return ymStr;
+};
+
+const getPastYMs = (ymRef: string, count: number): string[] => {
+  if (!ymRef || !ymRef.includes('-')) return [];
+  const parts = ymRef.split('-');
+  let y = parseInt(parts[0], 10);
+  let m = parseInt(parts[1], 10);
+  const list: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const ym = `${y}-${m < 10 ? '0' + m : m}`;
+    list.push(ym);
+    m--;
+    if (m < 1) {
+      m = 12;
+      y--;
+    }
+  }
+  return list;
+};
+
+const getComplaintYM = (c: Complaint): string | null => {
+  if (!c || !c.date) return null;
+  const clean = c.date.trim().substring(0, 10);
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    const m = parseInt(parts[1], 10);
+    return `${parts[0]}-${m < 10 ? '0' + m : m}`;
+  }
+  return null;
+};
+
+const getComplaintDay = (c: Complaint): number => {
+  if (!c || !c.date) return 0;
+  const clean = c.date.trim().substring(0, 10);
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    return parseInt(parts[2], 10) || 0;
+  }
+  return 0;
+};
+
+const getWeekForDay = (day: number) => {
+  if (day >= 1 && day <= 7) return { id: 1, name: 'Semana 1', range: 'Días 01 a 07' };
+  if (day >= 8 && day <= 14) return { id: 2, name: 'Semana 2', range: 'Días 08 a 14' };
+  if (day >= 15 && day <= 21) return { id: 3, name: 'Semana 3', range: 'Días 15 a 21' };
+  if (day >= 22 && day <= 28) return { id: 4, name: 'Semana 4', range: 'Días 22 a 28' };
+  return { id: 5, name: 'Semana 5', range: 'Días 29 a Fin de mes' };
+};
+
 // Componente de Fila Memoizado para mejor rendimiento
 const ReportRow = React.memo(({ 
   c, 
@@ -148,6 +211,245 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
   const [customDimension, setCustomDimension] = useState('');
   const [customSubDimension, setCustomSubDimension] = useState('');
+
+  // Estados para Análisis Comparativo y Semanal
+  const [activeReportMode, setActiveReportMode] = useState<'list' | 'comparative'>('list');
+  const [comparativeRange, setComparativeRange] = useState<'1month' | '3months' | '6months'>('1month');
+  const [comparativeRefMonth, setComparativeRefMonth] = useState<string>('');
+  const [comparativeArea, setComparativeArea] = useState<string>('Todas');
+  const [weeklyMonth, setWeeklyMonth] = useState<string>('');
+
+  const compAnalysis = useMemo(() => {
+    const availableMonthsSet = new Set<string>();
+    const now = new Date();
+    const currentActualYM = `${now.getFullYear()}-${(now.getMonth() + 1 < 10 ? '0' : '') + (now.getMonth() + 1)}`;
+    availableMonthsSet.add(currentActualYM);
+    
+    complaints.forEach(c => {
+      const ym = getComplaintYM(c);
+      if (ym) availableMonthsSet.add(ym);
+    });
+
+    const availableMonths = Array.from(availableMonthsSet).sort().reverse();
+    const refYM = comparativeRefMonth || availableMonths[0] || currentActualYM;
+
+    let currentYMs: string[] = [];
+    let previousYMs: string[] = [];
+    let labelCurrent = '';
+    let labelPrevious = '';
+
+    if (comparativeRange === '1month') {
+      currentYMs = [refYM];
+      const past2 = getPastYMs(refYM, 2);
+      previousYMs = [past2[1] || refYM];
+      labelCurrent = getMonthNameYear(refYM);
+      labelPrevious = getMonthNameYear(previousYMs[0]);
+    } else if (comparativeRange === '3months') {
+      currentYMs = getPastYMs(refYM, 3);
+      const past4 = getPastYMs(refYM, 4);
+      const prevRef = past4[3] || refYM;
+      previousYMs = getPastYMs(prevRef, 3);
+      labelCurrent = `Últimos 3 Meses (${getMonthNameYear(currentYMs[currentYMs.length - 1])} - ${getMonthNameYear(currentYMs[0])})`;
+      labelPrevious = `3 Meses Anteriores (${getMonthNameYear(previousYMs[previousYMs.length - 1])} - ${getMonthNameYear(previousYMs[0])})`;
+    } else {
+      currentYMs = getPastYMs(refYM, 6);
+      const past7 = getPastYMs(refYM, 7);
+      const prevRef = past7[6] || refYM;
+      previousYMs = getPastYMs(prevRef, 6);
+      labelCurrent = `Últimos 6 Meses (${getMonthNameYear(currentYMs[currentYMs.length - 1])} - ${getMonthNameYear(currentYMs[0])})`;
+      labelPrevious = `6 Meses Anteriores (${getMonthNameYear(previousYMs[previousYMs.length - 1])} - ${getMonthNameYear(previousYMs[0])})`;
+    }
+
+    const incidencesOnly = complaints.filter(c => {
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      if (isFelicitacion) return false;
+      if (comparativeArea !== 'Todas' && c.area !== comparativeArea) return false;
+      if (currentUser?.role === 'agent' && c.managerName !== currentUser.name) return false;
+      return true;
+    });
+
+    const filteredComplaintsCurrent = incidencesOnly.filter(c => {
+      const ym = getComplaintYM(c);
+      return ym && currentYMs.includes(ym);
+    });
+
+    const filteredComplaintsPrevious = incidencesOnly.filter(c => {
+      const ym = getComplaintYM(c);
+      return ym && previousYMs.includes(ym);
+    });
+
+    const totalCurrent = filteredComplaintsCurrent.length;
+    const totalPrevious = filteredComplaintsPrevious.length;
+    const totalDiff = totalCurrent - totalPrevious;
+    let totalPctChange = 0;
+    if (totalPrevious > 0) {
+      totalPctChange = parseFloat(((totalDiff / totalPrevious) * 100).toFixed(1));
+    } else if (totalCurrent > 0) {
+      totalPctChange = 100;
+    }
+
+    const allAreaNamesSet = new Set<string>(areas);
+    incidencesOnly.forEach(c => { if (c.area) allAreaNamesSet.add(c.area); });
+    let areaList = Array.from(allAreaNamesSet);
+    if (comparativeArea !== 'Todas') {
+      areaList = areaList.filter(a => a === comparativeArea);
+    }
+
+    const ranking = areaList.map(areaName => {
+      const curAreaItems = filteredComplaintsCurrent.filter(c => c.area === areaName);
+      const prevAreaItems = filteredComplaintsPrevious.filter(c => c.area === areaName);
+
+      const currentCount = curAreaItems.length;
+      const previousCount = prevAreaItems.length;
+      const diff = currentCount - previousCount;
+
+      let pctChange = 0;
+      if (previousCount > 0) {
+        pctChange = parseFloat(((diff / previousCount) * 100).toFixed(1));
+      } else if (currentCount > 0) {
+        pctChange = 100;
+      }
+
+      let trend: 'AUMENTÓ' | 'DISMINUYÓ' | 'SIN CAMBIO' = 'SIN CAMBIO';
+      if (diff > 0) trend = 'AUMENTÓ';
+      else if (diff < 0) trend = 'DISMINUYÓ';
+
+      const pending = curAreaItems.filter(c => c.status === ComplaintStatus.PENDIENTE || c.isObserved).length;
+      const inProgress = curAreaItems.filter(c => c.status === ComplaintStatus.PROCESO).length;
+      const resolved = curAreaItems.filter(c => c.status === ComplaintStatus.RESUELTO || c.status === ComplaintStatus.CERRADO).length;
+
+      return {
+        areaName,
+        currentCount,
+        previousCount,
+        diff,
+        pctChange,
+        trend,
+        pending,
+        inProgress,
+        resolved
+      };
+    });
+
+    ranking.sort((a, b) => b.currentCount - a.currentCount || b.diff - a.diff);
+    const topProblematicArea = ranking[0] || null;
+
+    return {
+      availableMonths,
+      refYM,
+      currentYMs,
+      previousYMs,
+      labelCurrent,
+      labelPrevious,
+      totalCurrent,
+      totalPrevious,
+      totalDiff,
+      totalPctChange,
+      ranking,
+      topProblematicArea,
+      filteredComplaintsCurrent,
+      filteredComplaintsPrevious
+    };
+  }, [complaints, comparativeRange, comparativeRefMonth, comparativeArea, areas, currentUser]);
+
+  const weeklyAnalysis = useMemo(() => {
+    const targetMonth = weeklyMonth || compAnalysis.refYM;
+
+    const monthComplaints = complaints.filter(c => {
+      const type = (c.complaintType || '').toLowerCase();
+      const dim = (c.dimension || '').toLowerCase();
+      const isFelicitacion = type.includes('felicitaci') || dim.includes('felicitaci');
+      if (isFelicitacion) return false;
+      if (comparativeArea !== 'Todas' && c.area !== comparativeArea) return false;
+      if (currentUser?.role === 'agent' && c.managerName !== currentUser.name) return false;
+
+      const ym = getComplaintYM(c);
+      return ym === targetMonth;
+    });
+
+    const totalMonthComplaints = monthComplaints.length;
+
+    const weekBuckets = [
+      { id: 1, name: 'Semana 1', range: 'Días 01 a 07', count: 0, items: [] as Complaint[] },
+      { id: 2, name: 'Semana 2', range: 'Días 08 a 14', count: 0, items: [] as Complaint[] },
+      { id: 3, name: 'Semana 3', range: 'Días 15 a 21', count: 0, items: [] as Complaint[] },
+      { id: 4, name: 'Semana 4', range: 'Días 22 a 28', count: 0, items: [] as Complaint[] },
+      { id: 5, name: 'Semana 5', range: 'Días 29 a Fin de mes', count: 0, items: [] as Complaint[] },
+    ];
+
+    monthComplaints.forEach(c => {
+      const day = getComplaintDay(c);
+      const week = getWeekForDay(day);
+      const bucket = weekBuckets.find(b => b.id === week.id);
+      if (bucket) {
+        bucket.count++;
+        bucket.items.push(c);
+      }
+    });
+
+    const weeks = weekBuckets.map(w => {
+      const pct = totalMonthComplaints > 0 ? (w.count / totalMonthComplaints) * 100 : 0;
+      const areaCounts: Record<string, number> = {};
+      w.items.forEach(i => {
+        if (i.area) areaCounts[i.area] = (areaCounts[i.area] || 0) + 1;
+      });
+
+      let topArea = '';
+      let maxAreaCount = 0;
+      Object.entries(areaCounts).forEach(([aName, cnt]) => {
+        if (cnt > maxAreaCount) {
+          maxAreaCount = cnt;
+          topArea = `${aName} (${cnt})`;
+        }
+      });
+
+      return { ...w, pct, topArea };
+    });
+
+    let peakWeek = weeks[0];
+    weeks.forEach(w => {
+      if (w.count > peakWeek.count) {
+        peakWeek = w;
+      }
+    });
+
+    if (peakWeek && peakWeek.count === 0) peakWeek = null as any;
+
+    const allAreasSet = new Set<string>(areas);
+    monthComplaints.forEach(c => { if (c.area) allAreasSet.add(c.area); });
+    let matrixAreaList = Array.from(allAreasSet);
+    if (comparativeArea !== 'Todas') {
+      matrixAreaList = matrixAreaList.filter(a => a === comparativeArea);
+    }
+
+    const areaMatrix = matrixAreaList.map(areaName => {
+      const areaItems = monthComplaints.filter(c => c.area === areaName);
+      let w1 = 0, w2 = 0, w3 = 0, w4 = 0, w5 = 0;
+      areaItems.forEach(c => {
+        const d = getComplaintDay(c);
+        if (d >= 1 && d <= 7) w1++;
+        else if (d >= 8 && d <= 14) w2++;
+        else if (d >= 15 && d <= 21) w3++;
+        else if (d >= 22 && d <= 28) w4++;
+        else if (d >= 29) w5++;
+      });
+      return {
+        areaName,
+        w1, w2, w3, w4, w5,
+        total: w1 + w2 + w3 + w4 + w5
+      };
+    }).sort((a, b) => b.total - a.total);
+
+    return {
+      targetMonth,
+      totalMonthComplaints,
+      weeks,
+      peakWeek,
+      areaMatrix
+    };
+  }, [complaints, weeklyMonth, compAnalysis.refYM, comparativeArea, areas, currentUser]);
 
   const uniqueDimensions = useMemo(() => {
     const dSet = new Set(dimensions.map(d => d.dimension));
@@ -1014,6 +1316,266 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
     saveAs(new Blob([buffer]), `Lista_Incidencias_Todas_${from}_al_${to}.xlsx`);
   };
 
+  const handleExportComparativeExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Sistema Calidad DAC';
+    workbook.lastModifiedBy = 'Sistema Calidad DAC';
+    workbook.created = new Date();
+
+    const indigoDarkFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E1B4B' } };
+    const indigoSubHeaderFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF312E81' } };
+    const slateLightFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    const redLightFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+    const greenLightFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+
+    const fontWhiteBold: Partial<ExcelJS.Font> = { color: { argb: 'FFFFFFFF' }, bold: true, name: 'Plus Jakarta Sans', size: 10 };
+    const fontTitleWhite: Partial<ExcelJS.Font> = { color: { argb: 'FFFFFFFF' }, bold: true, name: 'Plus Jakarta Sans', size: 14 };
+    const fontStandard: Partial<ExcelJS.Font> = { name: 'Plus Jakarta Sans', size: 10 };
+    const fontBold: Partial<ExcelJS.Font> = { name: 'Plus Jakarta Sans', size: 10, bold: true };
+
+    const borderStyle: any = {
+      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+    };
+
+    // HOJA 1: RESUMEN COMPARATIVO POR ÁREAS
+    const wsComparative = workbook.addWorksheet('Resumen Comparativo');
+
+    wsComparative.mergeCells('A1:J1');
+    const titleCell = wsComparative.getCell('A1');
+    titleCell.value = 'CLÍNICA DAC - REPORTE DE ESTADÍSTICAS COMPARATIVAS DE INCIDENCIAS';
+    titleCell.font = fontTitleWhite;
+    titleCell.fill = indigoDarkFill;
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    wsComparative.getRow(1).height = 40;
+
+    wsComparative.mergeCells('A2:J2');
+    const metaCell = wsComparative.getCell('A2');
+    metaCell.value = `Modo: ${
+      comparativeRange === '1month' ? 'Mes Actual vs. Mes Anterior' :
+      comparativeRange === '3months' ? 'Últimos 3 Meses vs. 3 Meses Anteriores' :
+      'Últimos 6 Meses vs. 6 Meses Anteriores'
+    } | Área: ${comparativeArea} | Ref: ${compAnalysis.labelCurrent} vs ${compAnalysis.labelPrevious} | Generado: ${new Date().toLocaleDateString('es-ES')}`;
+    metaCell.font = { name: 'Plus Jakarta Sans', size: 9, italic: true, color: { argb: 'FF64748B' } };
+    metaCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    wsComparative.getRow(2).height = 20;
+
+    wsComparative.addRow([]);
+
+    const kpiHeader = wsComparative.addRow(['INDICADOR CLAVE', 'PERIODO ACTUAL', 'PERIODO ANTERIOR', 'VARIACIÓN ABSOLUTA', '% VARIACIÓN', 'TENDENCIA']);
+    kpiHeader.eachCell(c => { c.fill = indigoSubHeaderFill; c.font = fontWhiteBold; c.border = borderStyle; c.alignment = { horizontal: 'center', vertical: 'middle' }; });
+    
+    const kpiRow = wsComparative.addRow([
+      `TOTAL INCIDENCIAS (${compAnalysis.labelCurrent})`,
+      compAnalysis.totalCurrent,
+      compAnalysis.totalPrevious,
+      (compAnalysis.totalDiff > 0 ? `+${compAnalysis.totalDiff}` : compAnalysis.totalDiff),
+      `${compAnalysis.totalPctChange > 0 ? '+' : ''}${compAnalysis.totalPctChange}%`,
+      compAnalysis.totalDiff > 0 ? 'AUMENTÓ 🔴' : compAnalysis.totalDiff < 0 ? 'DISMINUYÓ 🟩' : 'SIN CAMBIO ⚪'
+    ]);
+    kpiRow.eachCell(c => { c.border = borderStyle; c.font = fontBold; c.alignment = { horizontal: 'center', vertical: 'middle' }; });
+    kpiRow.height = 25;
+
+    wsComparative.addRow([]);
+    wsComparative.addRow([]);
+
+    const sectionTitle = wsComparative.addRow(['CUADRO COMPARATIVO COMPLETO POR ÁREAS (ORDENADO DE MAYOR A MENOR DENSIDAD DE INCIDENCIAS)']);
+    sectionTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
+
+    const tableHeader = wsComparative.addRow([
+      'POS', 'ÁREA HOSPITALARIA', `INCIDENCIAS (${compAnalysis.labelCurrent})`, `INCIDENCIAS (${compAnalysis.labelPrevious})`, 'DIFERENCIA (VAR)', '% VARIACIÓN', 'TENDENCIA', 'PENDIENTES', 'EN PROCESO', 'RESUELTOS / CERRADOS'
+    ]);
+    tableHeader.eachCell(c => {
+      c.fill = indigoDarkFill;
+      c.font = fontWhiteBold;
+      c.border = borderStyle;
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    });
+    tableHeader.height = 32;
+
+    compAnalysis.ranking.forEach((item, index) => {
+      const row = wsComparative.addRow([
+        index + 1,
+        item.areaName,
+        item.currentCount,
+        item.previousCount,
+        (item.diff > 0 ? `+${item.diff}` : item.diff),
+        `${item.pctChange > 0 ? '+' : ''}${item.pctChange}%`,
+        item.trend === 'AUMENTÓ' ? 'AUMENTÓ 🔴' : item.trend === 'DISMINUYÓ' ? 'DISMINUYÓ 🟩' : 'SIN CAMBIO ⚪',
+        item.pending,
+        item.inProgress,
+        item.resolved
+      ]);
+
+      row.eachCell((cell, colNumber) => {
+        cell.border = borderStyle;
+        cell.font = fontStandard;
+        cell.alignment = { vertical: 'middle', horizontal: colNumber === 2 ? 'left' : 'center' };
+
+        if (colNumber === 5 || colNumber === 6) {
+          cell.font = fontBold;
+          if (item.diff > 0) cell.fill = redLightFill;
+          else if (item.diff < 0) cell.fill = greenLightFill;
+        }
+        if (colNumber === 1 || colNumber === 3) cell.font = fontBold;
+      });
+      row.height = 22;
+    });
+
+    wsComparative.columns = [
+      { width: 8 },
+      { width: 32 },
+      { width: 22 },
+      { width: 22 },
+      { width: 18 },
+      { width: 16 },
+      { width: 18 },
+      { width: 15 },
+      { width: 15 },
+      { width: 20 }
+    ];
+
+    // HOJA 2: ANÁLISIS SEMANAL
+    const wsWeekly = workbook.addWorksheet('Análisis Semanal');
+
+    wsWeekly.mergeCells('A1:G1');
+    const wTitleCell = wsWeekly.getCell('A1');
+    wTitleCell.value = `CLÍNICA DAC - ANÁLISIS SEMANAL DE INCIDENCIAS (${getMonthNameYear(weeklyAnalysis.targetMonth)})`;
+    wTitleCell.font = fontTitleWhite;
+    wTitleCell.fill = indigoDarkFill;
+    wTitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    wsWeekly.getRow(1).height = 40;
+
+    wsWeekly.mergeCells('A2:G2');
+    const wMetaCell = wsWeekly.getCell('A2');
+    wMetaCell.value = `Mes Analizado: ${getMonthNameYear(weeklyAnalysis.targetMonth)} | Área: ${comparativeArea} | Total Incidencias del Mes: ${weeklyAnalysis.totalMonthComplaints}`;
+    wMetaCell.font = { name: 'Plus Jakarta Sans', size: 9, italic: true, color: { argb: 'FF64748B' } };
+    wMetaCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    wsWeekly.getRow(2).height = 20;
+
+    wsWeekly.addRow([]);
+
+    if (weeklyAnalysis.peakWeek) {
+      wsWeekly.mergeCells('A4:G4');
+      const peakCell = wsWeekly.getCell('A4');
+      peakCell.value = `🔥 SEMANA CON MÁS INCIDENCIAS EN EL MES: ${weeklyAnalysis.peakWeek.name.toUpperCase()} (${weeklyAnalysis.peakWeek.range}) con ${weeklyAnalysis.peakWeek.count} incidencias (${weeklyAnalysis.peakWeek.pct.toFixed(1)}% del total del mes)`;
+      peakCell.font = { bold: true, color: { argb: 'FFB91C1C' }, name: 'Plus Jakarta Sans', size: 10 };
+      peakCell.fill = redLightFill;
+      peakCell.border = borderStyle;
+      peakCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      wsWeekly.getRow(4).height = 28;
+    }
+
+    wsWeekly.addRow([]);
+
+    const wHeader1 = wsWeekly.addRow(['SEMANA', 'RANGO DE DÍAS', 'CANTIDAD INCIDENCIAS', '% DEL TOTAL DEL MES', 'ÁREA CON MÁS INCIDENCIAS']);
+    wHeader1.eachCell(c => { c.fill = indigoSubHeaderFill; c.font = fontWhiteBold; c.border = borderStyle; c.alignment = { horizontal: 'center', vertical: 'middle' }; });
+    wHeader1.height = 28;
+
+    weeklyAnalysis.weeks.forEach(w => {
+      const row = wsWeekly.addRow([
+        w.name,
+        w.range,
+        w.count,
+        `${w.pct.toFixed(1)}%`,
+        w.topArea || 'N/A'
+      ]);
+      row.eachCell(c => {
+        c.border = borderStyle;
+        c.font = fontStandard;
+        c.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      if (weeklyAnalysis.peakWeek && w.id === weeklyAnalysis.peakWeek.id) {
+        row.eachCell(c => { c.fill = redLightFill; c.font = fontBold; });
+      }
+      row.height = 22;
+    });
+
+    wsWeekly.addRow([]);
+    wsWeekly.addRow([]);
+
+    wsWeekly.addRow(['DESGLOSE DE INCIDENCIAS POR ÁREA Y POR SEMANAS']).getCell(1).font = { bold: true, size: 11, color: { argb: 'FF1E1B4B' }, name: 'Plus Jakarta Sans' };
+    
+    const matrixHeader = wsWeekly.addRow(['ÁREA HOSPITALARIA', 'SEMANA 1 (1-7)', 'SEMANA 2 (8-14)', 'SEMANA 3 (15-21)', 'SEMANA 4 (22-28)', 'SEMANA 5 (29+)', 'TOTAL MES']);
+    matrixHeader.eachCell(c => { c.fill = indigoDarkFill; c.font = fontWhiteBold; c.border = borderStyle; c.alignment = { horizontal: 'center', vertical: 'middle' }; });
+    matrixHeader.height = 28;
+
+    weeklyAnalysis.areaMatrix.forEach(rowItem => {
+      const row = wsWeekly.addRow([
+        rowItem.areaName,
+        rowItem.w1,
+        rowItem.w2,
+        rowItem.w3,
+        rowItem.w4,
+        rowItem.w5,
+        rowItem.total
+      ]);
+      row.eachCell((c, colIdx) => {
+        c.border = borderStyle;
+        c.font = colIdx === 1 || colIdx === 7 ? fontBold : fontStandard;
+        c.alignment = { horizontal: colIdx === 1 ? 'left' : 'center', vertical: 'middle' };
+      });
+      row.height = 20;
+    });
+
+    wsWeekly.columns = [
+      { width: 32 },
+      { width: 22 },
+      { width: 22 },
+      { width: 22 },
+      { width: 22 },
+      { width: 22 },
+      { width: 18 }
+    ];
+
+    // HOJA 3: DETALLE DE FICHAS
+    const wsDetail = workbook.addWorksheet('Detalle de Fichas');
+    wsDetail.columns = [
+      { header: 'FECHA ATENCIÓN', key: 'date', width: 20 },
+      { header: 'PACIENTE', key: 'patientName', width: 35 },
+      { header: 'ÁREA', key: 'area', width: 25 },
+      { header: 'ESPECIALIDAD', key: 'specialty', width: 25 },
+      { header: 'MÉDICO', key: 'doctorName', width: 30 },
+      { header: 'ESTADO', key: 'status', width: 18 },
+      { header: 'JEFATURA', key: 'managerName', width: 30 },
+      { header: 'DIMENSIÓN', key: 'dimension', width: 30 },
+      { header: 'DESCRIPCIÓN', key: 'description', width: 60 }
+    ];
+
+    const dHeaderRow = wsDetail.getRow(1);
+    dHeaderRow.height = 30;
+    dHeaderRow.eachCell(c => {
+      c.fill = indigoDarkFill;
+      c.font = fontWhiteBold;
+      c.border = borderStyle;
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    compAnalysis.filteredComplaintsCurrent.forEach(item => {
+      const row = wsDetail.addRow({
+        date: item.date,
+        patientName: item.patientName.toUpperCase(),
+        area: item.area,
+        specialty: item.specialty,
+        doctorName: item.doctorName || 'N/A',
+        status: item.status.toUpperCase(),
+        managerName: item.managerName || 'SIN ASIGNAR',
+        dimension: item.dimension || 'General',
+        description: item.description
+      });
+      row.eachCell(c => {
+        c.border = borderStyle;
+        c.font = fontStandard;
+        c.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Informe_Estadistico_Comparativo_DAC_${weeklyAnalysis.targetMonth}.xlsx`);
+  };
+
   const handleDelete = (id: string) => {
     onDelete(id);
     setEditing(null);
@@ -1022,20 +1584,21 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
 
   return (
     <div className="space-y-10 pb-20 animate-in fade-in duration-500">
+      {/* HEADER DE MÓDULO */}
       <div className="glass-card p-6 md:p-10 bg-white shadow-xl no-print border border-slate-100">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 mb-10">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 mb-6">
             <div className="space-y-2">
               <h3 className="text-2xl font-black uppercase text-slate-900 tracking-tight flex items-center gap-3">
                  <span className="w-10 h-10 bg-indigo-900 rounded-2xl flex items-center justify-center text-white text-lg">📊</span>
                  Informes y Auditoría
               </h3>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Visualice el historial y gestione resoluciones</p>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Visualice el historial, estadisticas comparativas y gestione resoluciones</p>
             </div>
-            <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex flex-wrap gap-3 items-center">
                {currentUser?.role === 'auditor' && (
                  <button 
                    onClick={() => setIsVistaTotal(!isVistaTotal)}
-                   className={`flex items-center gap-2 px-6 py-5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-xl ${
+                   className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-xl ${
                      isVistaTotal 
                       ? 'bg-amber-500 text-slate-950 ring-4 ring-amber-500/20' 
                       : 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100'
@@ -1045,68 +1608,469 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
                    {isVistaTotal ? 'Vista Total (Admin)' : 'Vista Auditor'}
                  </button>
                )}
-               <button onClick={() => window.print()} className="px-8 py-5 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF DASHBOARD</button>
-               <button onClick={() => { setExportType('pending'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 EXCEL PENDIENTES</button>
-               <button onClick={() => { setExportType('resolved'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">📊 EXCEL RESUELTOS</button>
-               <button onClick={() => { setExportType('all'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-8 py-5 bg-violet-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-violet-700 hover:scale-105 transition-all">📊 TODOS</button>
+               <button onClick={() => window.print()} className="px-6 py-4 bg-indigo-900 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-black hover:scale-105 transition-all">📄 PDF</button>
+               <button onClick={() => { setActiveReportMode('comparative'); }} className={`px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all ${activeReportMode === 'comparative' ? 'bg-amber-500 text-slate-950 ring-4 ring-amber-500/20' : 'bg-amber-600 text-white hover:bg-amber-700'}`}>📈 COMPARATIVA</button>
+               <button onClick={handleExportComparativeExcel} className="px-6 py-4 bg-emerald-700 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-800 hover:scale-105 transition-all">📊 EXCEL COMPARATIVO</button>
+               <button onClick={() => { setExportType('pending'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all">📊 PENDIENTES</button>
+               <button onClick={() => { setExportType('resolved'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-6 py-4 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:scale-105 transition-all">📊 RESUELTOS</button>
+               <button onClick={() => { setExportType('all'); setExportDateFrom(dateFrom); setExportDateTo(dateTo); setShowExportModal(true); }} className="px-6 py-4 bg-violet-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-violet-700 hover:scale-105 transition-all">📊 TODOS</button>
             </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-6 p-6 md:p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Desde</label>
-            <input type="date" className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Hasta</label>
-            <input type="date" className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Área</label>
-            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
-              <option value="Todas">Todas</option>
-              {areas.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Jefe</label>
-            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterManager} onChange={e => setFilterManager(e.target.value)}>
-              <option value="Todos">Todos</option>
-              {managers.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Estado</label>
-            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-              <option value="Todos">Todos</option>
-              <option value="Observados">SÓLO OBSERVADOS</option>
-              {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
-            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterDimension} onChange={e => setFilterDimension(e.target.value)}>
-              <option value="Todas">Todas</option>
-              {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Tipo</label>
-            <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterType} onChange={e => setFilterType(e.target.value)}>
-              <option value="Todos">Todos</option>
-              <option value="Incidencia">Incidencias</option>
-              <option value="Felicitación">Felicitaciones</option>
-              <option value="Sugerencia">Sugerencias</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Total</label>
-             <div className="p-4 bg-indigo-900 text-white rounded-xl font-black text-center text-sm">{filtered.length}</div>
-          </div>
+        {/* BARRA DE NAVEGACIÓN ENTRE MODOS */}
+        <div className="flex flex-wrap items-center gap-3 bg-slate-100 p-2 rounded-2xl border border-slate-200 shadow-inner">
+          <button
+            onClick={() => setActiveReportMode('list')}
+            className={`flex-1 min-w-[220px] py-3.5 px-6 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              activeReportMode === 'list'
+                ? 'bg-indigo-900 text-white shadow-xl scale-[1.01]'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <span className="text-base">📋</span> Listado y Gestión de Fichas
+          </button>
+          <button
+            onClick={() => setActiveReportMode('comparative')}
+            className={`flex-1 min-w-[220px] py-3.5 px-6 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              activeReportMode === 'comparative'
+                ? 'bg-indigo-900 text-white shadow-xl scale-[1.01]'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <span className="text-base">📈</span> Estadísticas Comparativas y Semanales
+          </button>
         </div>
+
+        {activeReportMode === 'list' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-6 p-6 md:p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 mt-6">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Desde</label>
+              <input type="date" className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Hasta</label>
+              <input type="date" className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Área</label>
+              <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
+                <option value="Todas">Todas</option>
+                {areas.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Jefe</label>
+              <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterManager} onChange={e => setFilterManager(e.target.value)}>
+                <option value="Todos">Todos</option>
+                {managers.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Estado</label>
+              <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <option value="Todos">Todos</option>
+                <option value="Observados">SÓLO OBSERVADOS</option>
+                {Object.values(ComplaintStatus).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Dimensión</label>
+              <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterDimension} onChange={e => setFilterDimension(e.target.value)}>
+                <option value="Todas">Todas</option>
+                {uniqueDimensions.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Tipo</label>
+              <select className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 text-sm font-bold shadow-sm" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                <option value="Todos">Todos</option>
+                <option value="Incidencia">Incidencias</option>
+                <option value="Felicitación">Felicitaciones</option>
+                <option value="Sugerencia">Sugerencias</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+               <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Total</label>
+               <div className="p-4 bg-indigo-900 text-white rounded-xl font-black text-center text-sm">{filtered.length}</div>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-10 no-print">
+      {activeReportMode === 'comparative' ? (
+        <div className="space-y-10 no-print animate-in fade-in duration-300">
+          {/* PANEL DE CONTROL DE COMPARATIVA */}
+          <div className="glass-card bg-white p-6 md:p-8 border border-slate-100 shadow-xl rounded-[2.5rem]">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8 border-b border-slate-100 pb-6">
+              <div>
+                <h4 className="font-black text-indigo-900 text-lg uppercase tracking-tight flex items-center gap-2">
+                  <span className="w-2 h-6 bg-indigo-600 rounded-full"></span>
+                  Configuración del Análisis Comparativo
+                </h4>
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  Compare periodos históricos y analice la evolución por semanas
+                </p>
+              </div>
+              <button
+                onClick={handleExportComparativeExcel}
+                className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:scale-105 transition-all flex items-center gap-3"
+              >
+                <span className="text-base">📊</span> EXPORTAR INFORME EXCEL COMPLETO
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Rango de Comparación */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Periodo Comparativo</label>
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
+                  <button
+                    onClick={() => setComparativeRange('1month')}
+                    className={`py-3 px-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      comparativeRange === '1month' ? 'bg-indigo-900 text-white shadow' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Mes Actual vs. Anterior
+                  </button>
+                  <button
+                    onClick={() => setComparativeRange('3months')}
+                    className={`py-3 px-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      comparativeRange === '3months' ? 'bg-indigo-900 text-white shadow' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Últimos 3 Meses
+                  </button>
+                  <button
+                    onClick={() => setComparativeRange('6months')}
+                    className={`py-3 px-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      comparativeRange === '6months' ? 'bg-indigo-900 text-white shadow' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    Últimos 6 Meses
+                  </button>
+                </div>
+              </div>
+
+              {/* Mes de Referencia */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Mes Base de Análisis</label>
+                <select
+                  className="w-full bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 rounded-2xl p-4 text-xs font-bold shadow-sm outline-none transition-all"
+                  value={compAnalysis.refYM}
+                  onChange={(e) => {
+                    setComparativeRefMonth(e.target.value);
+                    if (!weeklyMonth) setWeeklyMonth(e.target.value);
+                  }}
+                >
+                  {compAnalysis.availableMonths.map((ym) => (
+                    <option key={ym} value={ym}>
+                      {getMonthNameYear(ym)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro por Área */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Filtrar por Área</label>
+                <select
+                  className="w-full bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 rounded-2xl p-4 text-xs font-bold shadow-sm outline-none transition-all"
+                  value={comparativeArea}
+                  onChange={(e) => setComparativeArea(e.target.value)}
+                >
+                  <option value="Todas">Todas las Áreas (General)</option>
+                  {areas.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* RESUMEN EJECUTIVO / KPIS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl space-y-2 relative overflow-hidden">
+              <div className="flex justify-between items-start">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PERIODO ACTUAL</span>
+                <span className="w-8 h-8 bg-indigo-50 text-indigo-900 rounded-xl flex items-center justify-center font-black text-xs">📅</span>
+              </div>
+              <p className="text-3xl font-black text-slate-900">{compAnalysis.totalCurrent}</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase truncate">{compAnalysis.labelCurrent}</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl space-y-2 relative overflow-hidden">
+              <div className="flex justify-between items-start">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PERIODO ANTERIOR</span>
+                <span className="w-8 h-8 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center font-black text-xs">⏮️</span>
+              </div>
+              <p className="text-3xl font-black text-slate-700">{compAnalysis.totalPrevious}</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase truncate">{compAnalysis.labelPrevious}</p>
+            </div>
+
+            <div className={`p-6 rounded-[2rem] border shadow-xl space-y-2 relative overflow-hidden ${
+              compAnalysis.totalDiff > 0 ? 'bg-rose-50 border-rose-100 text-rose-900' : compAnalysis.totalDiff < 0 ? 'bg-emerald-50 border-emerald-100 text-emerald-900' : 'bg-slate-50 border-slate-100 text-slate-900'
+            }`}>
+              <div className="flex justify-between items-start">
+                <span className="text-[10px] font-black uppercase tracking-widest opacity-75">VARIACIÓN ABSOLUTA</span>
+                <span className="text-xl">{compAnalysis.totalDiff > 0 ? '🔺' : compAnalysis.totalDiff < 0 ? '🟩' : '⚪'}</span>
+              </div>
+              <p className="text-3xl font-black">
+                {compAnalysis.totalDiff > 0 ? `+${compAnalysis.totalDiff}` : compAnalysis.totalDiff}
+              </p>
+              <p className="text-[10px] font-black uppercase">
+                {compAnalysis.totalPctChange > 0 ? `+${compAnalysis.totalPctChange}%` : `${compAnalysis.totalPctChange}%`} vs. Periodo Anterior
+              </p>
+            </div>
+
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl space-y-2 relative overflow-hidden">
+              <div className="flex justify-between items-start">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ÁREA MÁS PROBLEMÁTICA</span>
+                <span className="w-8 h-8 bg-amber-100 text-amber-700 rounded-xl flex items-center justify-center font-black text-xs">⚠️</span>
+              </div>
+              <p className="text-lg font-black text-slate-900 truncate">
+                {compAnalysis.topProblematicArea ? compAnalysis.topProblematicArea.areaName : 'N/A'}
+              </p>
+              <p className="text-[10px] font-black text-amber-600 uppercase">
+                {compAnalysis.topProblematicArea ? `${compAnalysis.topProblematicArea.currentCount} Incidencias (${compAnalysis.topProblematicArea.diff > 0 ? '+' : ''}${compAnalysis.topProblematicArea.diff} var)` : 'Sin incidencias'}
+              </p>
+            </div>
+          </div>
+
+          {/* CUADRO COMPARATIVO COMPLETO POR ÁREAS */}
+          <div className="glass-card bg-white p-6 md:p-8 border border-slate-100 shadow-xl rounded-[2.5rem] overflow-hidden">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+              <div>
+                <h4 className="font-black text-indigo-900 text-base uppercase tracking-tight flex items-center gap-2">
+                  <span className="w-2 h-5 bg-indigo-600 rounded-full"></span>
+                  CUADRO COMPARATIVO COMPLETO POR ÁREA (ORDENADO POR ÁREA MÁS PROBLEMÁTICA)
+                </h4>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  Ordenado de mayor a menor según la cantidad de incidencias registradas en el periodo actual
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[850px]">
+                <thead>
+                  <tr className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest font-mono border-b border-slate-100">
+                    <th className="px-4 py-4 text-center">POS</th>
+                    <th className="px-6 py-4">ÁREA HOSPITALARIA</th>
+                    <th className="px-6 py-4 text-center">{compAnalysis.labelCurrent.toUpperCase()}</th>
+                    <th className="px-6 py-4 text-center text-slate-400">{compAnalysis.labelPrevious.toUpperCase()}</th>
+                    <th className="px-6 py-4 text-center">DIFERENCIA (VAR)</th>
+                    <th className="px-6 py-4 text-center">% VARIACIÓN</th>
+                    <th className="px-6 py-4 text-center">TENDENCIA</th>
+                    <th className="px-4 py-4 text-center text-orange-600">PENDIENTES</th>
+                    <th className="px-4 py-4 text-center text-blue-600">EN PROCESO</th>
+                    <th className="px-4 py-4 text-center text-emerald-600">RESUELTOS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs font-bold">
+                  {compAnalysis.ranking.map((row, idx) => (
+                    <tr key={row.areaName} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-4 text-center font-black">
+                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] ${
+                          idx === 0 ? 'bg-amber-500 text-slate-950 font-black ring-4 ring-amber-500/20' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-black text-slate-900 uppercase">{row.areaName}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="bg-indigo-900 text-white font-mono text-xs px-3.5 py-1.5 rounded-full font-black">
+                          {row.currentCount}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center text-slate-500 font-mono">
+                        {row.previousCount}
+                      </td>
+                      <td className="px-6 py-4 text-center font-mono font-black">
+                        <span className={`px-2.5 py-1 rounded-lg text-[11px] ${
+                          row.diff > 0 ? 'bg-rose-100 text-rose-700' : row.diff < 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {row.diff > 0 ? `+${row.diff}` : row.diff}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center font-mono font-black">
+                        <span className={`${
+                          row.diff > 0 ? 'text-rose-600' : row.diff < 0 ? 'text-emerald-600' : 'text-slate-400'
+                        }`}>
+                          {row.pctChange > 0 ? `+${row.pctChange}%` : `${row.pctChange}%`}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
+                          row.trend === 'AUMENTÓ' ? 'bg-rose-50 text-rose-700 border border-rose-200' : row.trend === 'DISMINUYÓ' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-50 text-slate-500'
+                        }`}>
+                          {row.trend === 'AUMENTÓ' ? '🔴 Aumentó' : row.trend === 'DISMINUYÓ' ? '🟢 Disminuyó' : '⚪ Sin cambio'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-center font-mono text-orange-600">{row.pending}</td>
+                      <td className="px-4 py-4 text-center font-mono text-blue-600">{row.inProgress}</td>
+                      <td className="px-4 py-4 text-center font-mono text-emerald-600">{row.resolved}</td>
+                    </tr>
+                  ))}
+                  {compAnalysis.ranking.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-black uppercase text-xs">
+                        No hay datos registrados para las áreas en el periodo seleccionado
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ANÁLISIS POR SEMANAS DEL MES */}
+          <div className="glass-card bg-white p-6 md:p-8 border border-slate-100 shadow-xl rounded-[2.5rem] space-y-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-6">
+              <div>
+                <h4 className="font-black text-indigo-900 text-base uppercase tracking-tight flex items-center gap-2">
+                  <span className="w-2 h-5 bg-amber-500 rounded-full"></span>
+                  ANÁLISIS COMPARATIVO POR SEMANAS DEL MES
+                </h4>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  Identifique la semana pico con mayor incidencia dentro del mes
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase">Seleccionar Mes:</label>
+                <select
+                  className="bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-xs font-bold shadow-sm outline-none"
+                  value={weeklyAnalysis.targetMonth}
+                  onChange={(e) => setWeeklyMonth(e.target.value)}
+                >
+                  {compAnalysis.availableMonths.map((ym) => (
+                    <option key={ym} value={ym}>
+                      {getMonthNameYear(ym)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Peak Week Alert Banner */}
+            {weeklyAnalysis.peakWeek && (
+              <div className="bg-amber-500/10 border-2 border-amber-500/30 p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-amber-500 text-slate-950 rounded-2xl flex items-center justify-center text-2xl font-black shadow-lg">
+                    🔥
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-amber-900 uppercase tracking-wider">SEMANA CRÍTICA / MAYOR DENSIDAD DE INCIDENCIAS</p>
+                    <p className="text-lg font-black text-slate-900">
+                      {weeklyAnalysis.peakWeek.name} ({weeklyAnalysis.peakWeek.range})
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-black text-amber-900 font-mono">{weeklyAnalysis.peakWeek.count} Incidencias</p>
+                  <p className="text-[10px] font-bold text-amber-700 uppercase">
+                    Representa el {weeklyAnalysis.peakWeek.pct.toFixed(1)}% del total de {weeklyAnalysis.totalMonthComplaints} incidencias del mes
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Weekly Cards Bar Visualizer */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {weeklyAnalysis.weeks.map((w) => {
+                const isPeak = weeklyAnalysis.peakWeek && w.id === weeklyAnalysis.peakWeek.id;
+                return (
+                  <div
+                    key={w.id}
+                    className={`p-5 rounded-2xl border transition-all space-y-3 ${
+                      isPeak
+                        ? 'bg-amber-500/10 border-amber-500/40 shadow-lg ring-2 ring-amber-500/30'
+                        : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black text-slate-900 uppercase">{w.name}</span>
+                      {isPeak && (
+                        <span className="bg-amber-500 text-slate-950 text-[8px] font-black px-2 py-0.5 rounded-full uppercase">
+                          PICO 🔥
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">{w.range}</p>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-2xl font-black font-mono text-slate-900">{w.count}</span>
+                      <span className="text-xs font-black font-mono text-indigo-700">{w.pct.toFixed(1)}%</span>
+                    </div>
+
+                    {/* Visual Progress Bar */}
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${isPeak ? 'bg-amber-500' : 'bg-indigo-600'}`}
+                        style={{ width: `${Math.max(w.pct, 4)}%` }}
+                      ></div>
+                    </div>
+
+                    {w.topArea && (
+                      <p className="text-[9px] font-bold text-slate-500 uppercase truncate">
+                        Top: <span className="text-slate-800">{w.topArea}</span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Area x Week Matrix Table */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <h5 className="font-black text-slate-900 text-xs uppercase tracking-wider">
+                DESGLOSE DE INCIDENCIAS POR ÁREA Y POR SEMANAS ({getMonthNameYear(weeklyAnalysis.targetMonth)})
+              </h5>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[700px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest font-mono border-b border-slate-100">
+                      <th className="px-6 py-4">ÁREA HOSPITALARIA</th>
+                      <th className="px-4 py-4 text-center">SEM 1 (1-7)</th>
+                      <th className="px-4 py-4 text-center">SEM 2 (8-14)</th>
+                      <th className="px-4 py-4 text-center">SEM 3 (15-21)</th>
+                      <th className="px-4 py-4 text-center">SEM 4 (22-28)</th>
+                      <th className="px-4 py-4 text-center">SEM 5 (29+)</th>
+                      <th className="px-6 py-4 text-center text-slate-900">TOTAL MES</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-bold">
+                    {weeklyAnalysis.areaMatrix.map((row) => (
+                      <tr key={row.areaName} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-3.5 font-black text-slate-800 uppercase">{row.areaName}</td>
+                        <td className="px-4 py-3.5 text-center font-mono">{row.w1 || '-'}</td>
+                        <td className="px-4 py-3.5 text-center font-mono">{row.w2 || '-'}</td>
+                        <td className="px-4 py-3.5 text-center font-mono">{row.w3 || '-'}</td>
+                        <td className="px-4 py-3.5 text-center font-mono">{row.w4 || '-'}</td>
+                        <td className="px-4 py-3.5 text-center font-mono">{row.w5 || '-'}</td>
+                        <td className="px-6 py-3.5 text-center font-mono font-black text-indigo-900">
+                          <span className="bg-indigo-50 text-indigo-900 px-3 py-1 rounded-full text-xs">
+                            {row.total}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {weeklyAnalysis.areaMatrix.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="text-center py-6 text-slate-400 font-black uppercase text-[10px]">
+                          Sin incidencias registradas en este mes
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-10 no-print">
         {/* DETALLE ANALÍTICO DE GESTIÓN POR JEFATURA */}
         <div className="glass-card bg-white p-6 md:p-8 border border-slate-100 shadow-xl rounded-[2.5rem] overflow-hidden">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -1207,6 +2171,7 @@ export const Reports: React.FC<Props> = ({ complaints, areas, specialties, onUpd
           </div>
         ))}
       </div>
+      )}
 
       {/* MODAL DE DERIVACIÓN */}
       {deriving && (
