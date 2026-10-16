@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { Complaint, ComplaintStatus, DailyStat } from '../types';
+import { CallMonitorUpload } from './CallMonitorUpload';
 import { dbService } from '../services/apiService';
 
 interface Props { complaints: Complaint[]; }
@@ -191,6 +192,7 @@ export const Dashboard: React.FC<Props> = ({ complaints }) => {
           </ResponsiveContainer>
         </div>
       </div>
+      <CallMonitorUpload dailyStats={dailyStats} />
     </div>
   );
 };
