@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { DailyStat } from '../types';
 
 interface Props { dailyStats: DailyStat[]; }
@@ -27,8 +28,8 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.name.toLowerCase().endsWith('.xlsx')) {
-        alert('Por favor, sube un archivo con formato .xlsx');
+      if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) {
+        alert('Por favor, sube un archivo con formato .xlsx o .xls');
         e.target.value = '';
         setSelectedFile(null);
         return;
@@ -40,24 +41,36 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
   const processFile = async () => {
     if (!selectedFile) return;
     try {
-        const workbook = new ExcelJS.Workbook();
         const arrayBuffer = await selectedFile.arrayBuffer();
-        await workbook.xlsx.load(arrayBuffer);
-        const worksheet = workbook.worksheets[0];
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
         const data: { [date: string]: { answered: number, unanswered: number } } = {};
         const details: { [date: string]: any[] } = {};
         
-        worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber === 1) return;
-            const fechaCell = row.getCell(1).value?.toString();
-            const horaCell = row.getCell(2).value?.toString();
-            const destinoCell = row.getCell(3).value?.toString();
-            const estadoCell = row.getCell(4).value?.toString();
-            const duracionCell = row.getCell(5).value?.toString();
+        rows.forEach((row, index) => {
+            if (index === 0) return; // Skip header
             
-            if (fechaCell) {
-                // Split Fecha (col 1) into Fecha and Hora (HH:MM)
-                const [fullDate, fullTime] = fechaCell.split(' ');
+            // row indices: Fecha(0), Hora(1), Destino(2), Estado(3), Duracion(4) -> based on request description
+            // Wait, previously code said: Fecha(1), Hora(2), Destino(3), Estado(4), Duracion(5) as 1-based, 
+            // Now rows are 0-based, so this matches: 
+            // const fechaCell = row[0];
+            // const destinoCell = row[2];
+            // const estadoCell = row[7]; // Need to check exact column mapping as per previous code
+            // The previous code had:
+            // 52: const fechaCell = row.getCell(1).value?.toString();
+            // ...
+            // 69: // Column indices: Destino(4), Estado(8), Duracion(9)
+            // Wait, the previous code had inconsistencies in column indices.
+            // Row 1: Fecha(1), Hora(2), Destino(3), Estado(4), Duracion(5) -> line 52-56
+            // But line 70-72 says: Destino(4), Estado(8), Duracion(9)
+            // Let's stick to what was working for the user: Destino(column 4 -> index 3), Estado(column 8 -> index 7), Duracion(column 9 -> index 8)
+            
+            const fechaValue = row[0]?.toString();
+            if (fechaValue) {
+                const [fullDate, fullTime] = fechaValue.split(' ');
                 let date = fullDate;
                 const hora = fullTime ? fullTime.split(':').slice(0, 2).join(':') : '';
                 
@@ -66,18 +79,17 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
                     if (parts.length === 3) date = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
                 }
                 
-                // Column indices: Destino(4), Estado(8), Duracion(9)
-                const destinoCell = row.getCell(4).value?.toString();
-                const estadoCell = row.getCell(8).value?.toString();
-                const duracionCell = row.getCell(9).value?.toString();
+                const destinoValue = row[3]?.toString(); // Column 4
+                const estadoValue = row[7]?.toString(); // Column 8
+                const duracionValue = row[8]?.toString(); // Column 9
 
                 if (!data[date]) { data[date] = { answered: 0, unanswered: 0 }; details[date] = []; }
                 
-                const isAnswered = estadoCell?.toUpperCase().includes('ANSWERED');
+                const isAnswered = estadoValue?.toUpperCase().includes('ANSWERED');
                 if (isAnswered) data[date].answered++;
                 else data[date].unanswered++;
                 
-                details[date].push({ fecha: date, hora: hora, destino: destinoCell, estado: isAnswered ? 'Contestada' : 'Sin contestar', duracion: duracionCell });
+                details[date].push({ fecha: date, hora: hora, destino: destinoValue, estado: isAnswered ? 'Contestada' : 'Sin contestar', duracion: duracionValue });
             }
         });
         setResults(data);
