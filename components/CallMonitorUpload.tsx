@@ -102,27 +102,83 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
 
   const exportToExcel = () => {
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Resumen y Detalle');
+    const sheet = workbook.addWorksheet('Resumen');
+    
+    // Header for Summary
     sheet.columns = [
         { header: 'Fecha', key: 'date', width: 15 },
-        { header: 'Cont (Excel/Dash)', key: 'ans', width: 25 },
-        { header: 'No Cont (Excel/Dash)', key: 'unans', width: 25 },
+        { header: 'Cont (Excel)', key: 'ansEx', width: 15 },
+        { header: 'Cont (Dash)', key: 'ansDash', width: 15 },
+        { header: 'No Cont (Excel)', key: 'unansEx', width: 15 },
+        { header: 'No Cont (Dash)', key: 'unansDash', width: 15 },
         { header: 'Dif. Cont', key: 'diffAns', width: 15 },
         { header: 'Dif. No Cont', key: 'diffUnans', width: 15 },
     ];
+    
+    // Formatting Summary Header
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    
     comparison.forEach(c => {
-        sheet.addRow({ date: c.date, ans: `${c.file.answered} / ${c.dashboard.answered}`, unans: `${c.file.unanswered} / ${c.dashboard.unanswered}`, diffAns: c.diffAnswered, diffUnans: c.diffUnanswered });
+        const row = sheet.addRow({ 
+            date: c.date, 
+            ansEx: c.file.answered, 
+            ansDash: c.dashboard.answered, 
+            unansEx: c.file.unanswered, 
+            unansDash: c.dashboard.unanswered,
+            diffAns: c.diffAnswered, 
+            diffUnans: c.diffUnanswered 
+        });
+        
+        // Add border to all cells
+        row.eachCell((cell) => {
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+        });
     });
-    sheet.getRow(1).font = { bold: true };
+
+    // Detail Sheet
+    const detailSheet = workbook.addWorksheet('Detalle');
+    detailSheet.columns = [
+        { header: 'Fecha', key: 'fecha', width: 15 },
+        { header: 'Hora', key: 'hora', width: 15 },
+        { header: 'Destino', key: 'destino', width: 20 },
+        { header: 'Estado', key: 'estado', width: 20 },
+        { header: 'Duración', key: 'duracion', width: 15 },
+    ];
+    
+    detailSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    detailSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+
+    Object.entries(callDetails).forEach(([date, details]) => {
+        details.forEach(d => {
+            const row = detailSheet.addRow(d);
+            row.eachCell((cell) => {
+                cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            });
+        });
+    });
+
     workbook.xlsx.writeBuffer().then(buffer => {
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'Reporte_Llamadas.xlsx';
+        a.download = 'Reporte_Llamadas_Detallado.xlsx';
         a.click();
     });
   };
+
+  if (!isUnlocked) {
+    return (
+      <div className="glass-card p-8 bg-white border border-slate-200 mt-8 rounded-2xl shadow-sm">
+        <h4 className="text-lg font-black text-slate-900 mb-6 uppercase tracking-widest">Acceso Monitor</h4>
+        <form onSubmit={handlePasswordSubmit} className="flex gap-4">
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="border rounded-xl px-4 py-2" placeholder="Ingrese contraseña" />
+          <button type="submit" className="bg-slate-900 text-white rounded-xl px-6 py-2 font-black text-xs uppercase">Entrar</button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card p-8 bg-white border border-slate-200 mt-8 rounded-2xl shadow-sm">
@@ -167,3 +223,4 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
     </div>
   );
 };
+
