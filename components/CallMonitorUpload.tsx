@@ -20,24 +20,28 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    // Check extension
-    if (!file.name.toLowerCase().endsWith('.xlsx')) {
-        alert('Por favor, sube un archivo con formato .xlsx');
-        return;
-    }
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-    setFile(file);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.name.toLowerCase().endsWith('.xlsx')) {
+        alert('Por favor, sube un archivo con formato .xlsx');
+        e.target.value = '';
+        setSelectedFile(null);
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  const processFile = async () => {
+    if (!selectedFile) return;
 
     try {
         const workbook = new ExcelJS.Workbook();
-        const arrayBuffer = await file.arrayBuffer();
+        const arrayBuffer = await selectedFile.arrayBuffer();
         
-        // Basic check for zip signature (PK) if possible, but exceljs will handle it.
-        // If it fails, it's not a valid xlsx.
         await workbook.xlsx.load(arrayBuffer);
         
         if (workbook.worksheets.length === 0) {
@@ -45,30 +49,22 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
         }
 
         const worksheet = workbook.worksheets[0];
-
         const data: { [date: string]: { answered: number, unanswered: number } } = {};
         
-        // Assuming row 1 is header, data starts from row 2
         worksheet.eachRow((row, rowNumber) => {
             if (rowNumber === 1) return;
 
-            // Based on screenshot, Fecha is column A (1), Estado is column H (8)
             const fechaCell = row.getCell(1).value;
             const estadoCell = row.getCell(8).value;
             
-            console.log(`Row ${rowNumber}: Fecha=${fechaCell}, Estado=${estadoCell}`);
-
             const fecha = fechaCell?.toString();
             const estado = estadoCell?.toString();
 
             if (fecha) {
-                // Assuming date is in format DD/MM/YYYY or similar, or YYYY-MM-DD
-                // Let's try to be flexible. If it contains '/', it might be DD/MM/YYYY
                 let date = fecha.split(' ')[0];
                 if (date.includes('/')) {
                     const parts = date.split('/');
                     if (parts.length === 3) {
-                        // Assume DD/MM/YYYY
                         date = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
                     }
                 }
@@ -80,14 +76,11 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
             }
         });
 
-        console.log("Parsed data:", data);
         setResults(data);
 
-        // Compare
         const comp = Object.keys(data).map(date => {
-            // Try to find a match by comparing formatted strings
             const dashboardStat = dailyStats.find(s => {
-                const sDate = s.date.split('T')[0]; // Assuming ISO format YYYY-MM-DD
+                const sDate = s.date.split('T')[0];
                 return sDate === date || s.date.includes(date) || date.includes(sDate);
             });
             const fileStat = data[date];
@@ -121,7 +114,16 @@ export const CallMonitorUpload: React.FC<Props> = ({ dailyStats }) => {
   return (
     <div className="glass-card p-8 bg-white border border-slate-200 mt-8">
       <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Análisis de Llamadas Excel</h4>
-      <input type="file" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-slate-900 file:text-white hover:file:bg-slate-800" />
+      <div className="flex gap-4 items-center">
+        <input type="file" onChange={handleFileChange} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-slate-900 file:text-white hover:file:bg-slate-800" />
+        <button 
+          onClick={processFile} 
+          disabled={!selectedFile}
+          className="bg-emerald-600 text-white rounded-xl px-6 py-2 font-black text-xs uppercase disabled:bg-slate-300"
+        >
+          Procesar Archivo
+        </button>
+      </div>
       
       {comparison.length > 0 && (
         <div className="mt-8 overflow-x-auto">
